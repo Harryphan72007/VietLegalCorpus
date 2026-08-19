@@ -34,3 +34,7 @@ src/vietlegalcorpus/   package (cli, config, logging, schemas/)
 tests/            unit / fixtures / golden
 data/             raw (gitignored) · samples (committed) · processed (gitignored)
 ```
+
+## License
+
+Licensed under the [Apache License 2.0](LICENSE), matching the package metadata.
