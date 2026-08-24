@@ -25,13 +25,17 @@ def test_plain_text_parser_preserves_source_and_paragraphs() -> None:
     assert first == second
     assert first.media_type == "text/plain"
     assert first.raw_sha256 == sha256_bytes(content)
-    assert "\n\n" in first.raw_text
+    assert "\n\n" in first.raw_text.replace("\r\n", "\n")
     assert [block.text for block in first.blocks] == [
         "LUẬT MẪU",
         "Điều 1. Phạm vi điều chỉnh.\nNội dung tiếp theo.",
         "Điều 2. Hiệu lực.",
     ]
-    assert first.blocks[1].raw_text == "Điều 1.  Phạm vi điều chỉnh.\nNội dung tiếp theo."
+    assert first.blocks[1].raw_text.replace("\r\n", "\n") == (
+        "Điều 1.  Phạm vi điều chỉnh.\nNội dung tiếp theo."
+    )
+    for block in first.blocks:
+        assert first.raw_text[block.source_start : block.source_end] == block.raw_text
     assert first.warnings == ()
 
 
@@ -49,6 +53,9 @@ def test_html_parser_extracts_block_content_and_ignores_script_style() -> None:
         "Điểm b",
     ]
     assert "ignore_me" not in " ".join(block.text for block in result.blocks)
+    assert result.raw_text[result.blocks[1].source_start : result.blocks[1].source_end] == (
+        "Điều 1. <strong>Phạm vi</strong> điều chỉnh."
+    )
     assert result.warnings == ()
 
 
