@@ -10,7 +10,7 @@ from typing import Protocol
 from vietlegalcorpus.identity import sha256_bytes
 
 _HORIZONTAL_WHITESPACE = re.compile(r"[^\S\r\n]+")
-_PARAGRAPH_BREAK = re.compile(r"\n[ \t]*\n+")
+_PARAGRAPH_BREAK = re.compile(r"(?:\r?\n)[ \t]*(?:\r?\n)+")
 _BLOCK_TAGS = frozenset({"h1", "h2", "h3", "h4", "h5", "h6", "p", "li", "td", "th"})
 _SKIP_TAGS = frozenset({"head", "script", "style", "template"})
 
@@ -27,6 +27,8 @@ class ParsedBlock:
     text: str
     raw_text: str
     source_kind: str
+    source_start: int
+    source_end: int
 
 
 @dataclass(frozen=True, slots=True)
@@ -79,10 +81,9 @@ class PlainTextParser:
 
     def parse(self, content: bytes) -> ParseResult:
         raw_text = _decode_utf8(content)
-        normalized_newlines = raw_text.replace("\r\n", "\n").replace("\r", "\n")
         blocks: list[ParsedBlock] = []
-        for raw_block in _PARAGRAPH_BREAK.split(normalized_newlines):
-            raw_block = raw_block.strip("\n")
+        for source_start, source_end in _paragraph_spans(raw_text):
+            raw_block = raw_text[source_start:source_end]
             text = _normalize_visible_text(raw_block)
             if text:
                 blocks.append(
@@ -91,6 +92,8 @@ class PlainTextParser:
                         text=text,
                         raw_text=raw_block,
                         source_kind="paragraph",
+                        source_start=source_start,
+                        source_end=source_end,
                     )
                 )
         return ParseResult(
@@ -110,7 +113,7 @@ class HtmlParser:
 
     def parse(self, content: bytes) -> ParseResult:
         raw_text = _decode_utf8(content)
-        collector = _HtmlBlockCollector()
+        collector = _HtmlBlockCollector(raw_text)
         try:
             collector.feed(raw_text)
             collector.close()
@@ -132,11 +135,15 @@ class HtmlParser:
 
 
 class _HtmlBlockCollector(HTMLParser):
-    def __init__(self) -> None:
+    def __init__(self, raw_text: str) -> None:
         super().__init__(convert_charrefs=True)
+        self._raw_text = raw_text
+        self._line_starts = [0]
+        self._line_starts.extend(match.end() for match in re.finditer("\n", raw_text))
         self._blocks: list[ParsedBlock] = []
         self._current_tag: str | None = None
         self._current_data: list[str] = []
+        self._current_start = 0
         self._skip_depth = 0
         self._body_depth = 0
         self.ignored_visible_text = False
@@ -158,6 +165,8 @@ class _HtmlBlockCollector(HTMLParser):
         if tag in _BLOCK_TAGS and self._current_tag is None:
             self._current_tag = tag
             self._current_data = []
+            start_tag = self.get_starttag_text() or ""
+            self._current_start = self._absolute_position() + len(start_tag)
         elif tag == "br" and self._current_tag is not None:
             self._current_data.append("\n")
 
@@ -166,6 +175,7 @@ class _HtmlBlockCollector(HTMLParser):
             self._skip_depth -= 1
             return
         if tag == self._current_tag:
+            source_end = self._absolute_position()
             raw_text = "".join(self._current_data)
             text = _normalize_visible_text(raw_text)
             if text:
@@ -175,6 +185,8 @@ class _HtmlBlockCollector(HTMLParser):
                         text=text,
                         raw_text=raw_text,
                         source_kind=tag,
+                        source_start=self._current_start,
+                        source_end=source_end,
                     )
                 )
             self._current_tag = None
@@ -189,6 +201,10 @@ class _HtmlBlockCollector(HTMLParser):
             self._current_data.append(data)
         elif self._body_depth and data.strip():
             self.ignored_visible_text = True
+
+    def _absolute_position(self) -> int:
+        line, column = self.getpos()
+        return self._line_starts[line - 1] + column
 
 
 def default_parser_registry() -> ParserRegistry:
@@ -211,3 +227,21 @@ def _decode_utf8(content: bytes) -> str:
 def _normalize_visible_text(value: str) -> str:
     lines = [_HORIZONTAL_WHITESPACE.sub(" ", line).strip() for line in value.splitlines()]
     return "\n".join(line for line in lines if line)
+
+
+def _paragraph_spans(raw_text: str) -> tuple[tuple[int, int], ...]:
+    spans: list[tuple[int, int]] = []
+    start = 0
+    for separator in _PARAGRAPH_BREAK.finditer(raw_text):
+        spans.append((start, separator.start()))
+        start = separator.end()
+    spans.append((start, len(raw_text)))
+    trimmed: list[tuple[int, int]] = []
+    for left, right in spans:
+        while left < right and raw_text[left] in "\r\n":
+            left += 1
+        while right > left and raw_text[right - 1] in "\r\n":
+            right -= 1
+        if raw_text[left:right].strip():
+            trimmed.append((left, right))
+    return tuple(trimmed)
