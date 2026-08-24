@@ -1,0 +1,86 @@
+{
+  "$defs": {
+    "ProvisionKind": {
+      "description": "Structural levels preserved from a legal source.",
+      "enum": [
+        "part",
+        "chapter",
+        "section",
+        "article",
+        "clause",
+        "point",
+        "annex",
+        "other"
+      ],
+      "title": "ProvisionKind",
+      "type": "string"
+    }
+  },
+  "$id": "urn:pio1:vietlegalcorpus:1.0.0:provision",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Stable logical identity for a structural provision.",
+  "properties": {
+    "canonical_path": {
+      "items": {
+        "minLength": 1,
+        "type": "string"
+      },
+      "minItems": 1,
+      "title": "Canonical Path",
+      "type": "array"
+    },
+    "document_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Document Id",
+      "type": "string"
+    },
+    "kind": {
+      "$ref": "#/$defs/ProvisionKind"
+    },
+    "label": {
+      "minLength": 1,
+      "title": "Label",
+      "type": "string"
+    },
+    "parent_provision_id": {
+      "anyOf": [
+        {
+          "maxLength": 160,
+          "minLength": 3,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Parent Provision Id"
+    },
+    "provision_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Provision Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "provision_id",
+    "document_id",
+    "kind",
+    "canonical_path",
+    "label"
+  ],
+  "title": "Provision",
+  "type": "object"
+}

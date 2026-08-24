@@ -1,0 +1,10 @@
+{
+  "model": "provision",
+  "payload": {
+    "provision_id": "provision:law-01:article-1",
+    "document_id": "document:law-01",
+    "kind": "article",
+    "canonical_path": [],
+    "label": "Điều 1"
+  }
+}

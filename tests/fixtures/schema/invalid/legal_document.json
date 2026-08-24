@@ -1,0 +1,8 @@
+{
+  "model": "legal_document",
+  "payload": {
+    "document_id": "document:law-01",
+    "title": "",
+    "document_type": "law"
+  }
+}

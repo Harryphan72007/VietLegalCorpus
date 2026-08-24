@@ -4,12 +4,14 @@ from __future__ import annotations
 
 import platform
 from pathlib import Path
+from typing import Annotated
 
 import typer
 
 from vietlegalcorpus import __version__
 from vietlegalcorpus.config import load_settings
 from vietlegalcorpus.logging import configure_logging
+from vietlegalcorpus.schemas.export import export_json_schemas
 
 app = typer.Typer(add_completion=False, help="VietLegalCorpus CLI.")
 
@@ -36,6 +38,21 @@ def doctor() -> None:
     ):
         status = "ok" if _check_writable(path) else "NOT writable"
         typer.echo(f"  {label:<10} {path} -> {status}")
+
+
+@app.command("export-schemas")
+def export_schemas(
+    output_dir: Annotated[
+        Path,
+        typer.Option(
+            "--output-dir",
+            help="Directory for deterministic CorpusSnapshot v1 JSON Schemas.",
+        ),
+    ] = Path("schemas/v1"),
+) -> None:
+    """Export the versioned corpus contract as JSON Schema files."""
+    exported = export_json_schemas(output_dir)
+    typer.echo(f"Exported {len(exported)} JSON schemas to {output_dir}")
 
 
 def _check_writable(path: Path) -> bool:

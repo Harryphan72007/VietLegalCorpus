@@ -1,1 +1,41 @@
-"""Pydantic schema models (populated in later PRs)."""
+"""Public corpus contract models."""
+
+from vietlegalcorpus.schemas.models import (
+    CORPUS_SCHEMA_VERSION,
+    CorpusManifest,
+    DocumentType,
+    DocumentVersion,
+    LegalDocument,
+    LegalStatus,
+    ManifestEntry,
+    Provision,
+    ProvisionKind,
+    ProvisionVersion,
+    RecordRef,
+    RecordType,
+    RelationEdge,
+    RelationType,
+    RetrievalMethod,
+    SourceAnchor,
+    SourceArtifact,
+)
+
+__all__ = [
+    "CORPUS_SCHEMA_VERSION",
+    "CorpusManifest",
+    "DocumentType",
+    "DocumentVersion",
+    "LegalDocument",
+    "LegalStatus",
+    "ManifestEntry",
+    "Provision",
+    "ProvisionKind",
+    "ProvisionVersion",
+    "RecordRef",
+    "RecordType",
+    "RelationEdge",
+    "RelationType",
+    "RetrievalMethod",
+    "SourceAnchor",
+    "SourceArtifact",
+]

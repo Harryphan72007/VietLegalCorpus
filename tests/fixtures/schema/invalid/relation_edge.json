@@ -1,0 +1,15 @@
+{
+  "model": "relation_edge",
+  "payload": {
+    "relation_id": "relation:self",
+    "relation_type": "amends",
+    "source": {
+      "record_type": "document_version",
+      "record_id": "document-version:law-01:v1"
+    },
+    "target": {
+      "record_type": "document_version",
+      "record_id": "document-version:law-01:v1"
+    }
+  }
+}

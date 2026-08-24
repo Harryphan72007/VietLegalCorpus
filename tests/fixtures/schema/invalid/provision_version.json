@@ -1,0 +1,16 @@
+{
+  "model": "provision_version",
+  "payload": {
+    "provision_version_id": "provision-version:law-01:article-1:v1",
+    "provision_id": "provision:law-01:article-1",
+    "document_version_id": "document-version:law-01:v1",
+    "text": "Phạm vi điều chỉnh.",
+    "text_sha256": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "parser_version": "html-text/1.0.0",
+    "source_anchor": {
+      "source_artifact_id": "artifact:sha256:aaaaaaaaaaaaaaaa",
+      "start_offset": 30,
+      "end_offset": 10
+    }
+  }
+}

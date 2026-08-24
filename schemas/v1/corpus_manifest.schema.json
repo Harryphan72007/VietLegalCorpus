@@ -1,0 +1,106 @@
+{
+  "$defs": {
+    "ManifestEntry": {
+      "additionalProperties": false,
+      "description": "Integrity metadata for one record file in a corpus package.",
+      "properties": {
+        "record_count": {
+          "minimum": 0,
+          "title": "Record Count",
+          "type": "integer"
+        },
+        "record_type": {
+          "$ref": "#/$defs/RecordType"
+        },
+        "relative_path": {
+          "minLength": 1,
+          "title": "Relative Path",
+          "type": "string"
+        },
+        "sha256": {
+          "pattern": "^[0-9a-f]{64}$",
+          "title": "Sha256",
+          "type": "string"
+        }
+      },
+      "required": [
+        "record_type",
+        "relative_path",
+        "sha256",
+        "record_count"
+      ],
+      "title": "ManifestEntry",
+      "type": "object"
+    },
+    "RecordType": {
+      "description": "Record families stored in versioned JSONL files.",
+      "enum": [
+        "source_artifact",
+        "legal_document",
+        "document_version",
+        "provision",
+        "provision_version",
+        "relation_edge"
+      ],
+      "title": "RecordType",
+      "type": "string"
+    }
+  },
+  "$id": "urn:pio1:vietlegalcorpus:1.0.0:corpus_manifest",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Versioned inventory contract; snapshot hashing is implemented separately.",
+  "properties": {
+    "config_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Config Sha256",
+      "type": "string"
+    },
+    "corpus_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Corpus Id",
+      "type": "string"
+    },
+    "created_at": {
+      "format": "date-time",
+      "title": "Created At",
+      "type": "string"
+    },
+    "entries": {
+      "items": {
+        "$ref": "#/$defs/ManifestEntry"
+      },
+      "minItems": 1,
+      "title": "Entries",
+      "type": "array"
+    },
+    "generator_version": {
+      "minLength": 1,
+      "title": "Generator Version",
+      "type": "string"
+    },
+    "review_date": {
+      "format": "date",
+      "title": "Review Date",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    }
+  },
+  "required": [
+    "corpus_id",
+    "created_at",
+    "review_date",
+    "generator_version",
+    "config_sha256",
+    "entries"
+  ],
+  "title": "CorpusManifest",
+  "type": "object"
+}

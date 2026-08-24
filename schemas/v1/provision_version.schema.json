@@ -1,0 +1,122 @@
+{
+  "$defs": {
+    "SourceAnchor": {
+      "additionalProperties": false,
+      "description": "Exact source span supporting a provision version.",
+      "properties": {
+        "end_offset": {
+          "exclusiveMinimum": 0,
+          "title": "End Offset",
+          "type": "integer"
+        },
+        "page_end": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page End"
+        },
+        "page_start": {
+          "anyOf": [
+            {
+              "exclusiveMinimum": 0,
+              "type": "integer"
+            },
+            {
+              "type": "null"
+            }
+          ],
+          "default": null,
+          "title": "Page Start"
+        },
+        "source_artifact_id": {
+          "maxLength": 160,
+          "minLength": 3,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+          "title": "Source Artifact Id",
+          "type": "string"
+        },
+        "start_offset": {
+          "minimum": 0,
+          "title": "Start Offset",
+          "type": "integer"
+        }
+      },
+      "required": [
+        "source_artifact_id",
+        "start_offset",
+        "end_offset"
+      ],
+      "title": "SourceAnchor",
+      "type": "object"
+    }
+  },
+  "$id": "urn:pio1:vietlegalcorpus:1.0.0:provision_version",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Text and evidence for one provision in one document version.",
+  "properties": {
+    "document_version_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Document Version Id",
+      "type": "string"
+    },
+    "parser_version": {
+      "minLength": 1,
+      "title": "Parser Version",
+      "type": "string"
+    },
+    "provision_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Provision Id",
+      "type": "string"
+    },
+    "provision_version_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Provision Version Id",
+      "type": "string"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_anchor": {
+      "$ref": "#/$defs/SourceAnchor"
+    },
+    "text": {
+      "minLength": 1,
+      "title": "Text",
+      "type": "string"
+    },
+    "text_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Text Sha256",
+      "type": "string"
+    }
+  },
+  "required": [
+    "provision_version_id",
+    "provision_id",
+    "document_version_id",
+    "text",
+    "text_sha256",
+    "parser_version",
+    "source_anchor"
+  ],
+  "title": "ProvisionVersion",
+  "type": "object"
+}

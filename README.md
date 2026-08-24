@@ -13,6 +13,7 @@ pip install -e ".[dev]"
 
 vlc version      # -> 0.1.0
 vlc doctor       # environment + writable data dirs
+vlc export-schemas --output-dir schemas/v1
 ```
 
 ## Tasks
