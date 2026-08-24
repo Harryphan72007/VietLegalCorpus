@@ -1,0 +1,113 @@
+{
+  "$defs": {
+    "LegalStatus": {
+      "description": "Explicitly sourced status; ``unknown`` is never inferred as active.",
+      "enum": [
+        "unknown",
+        "not_yet_effective",
+        "in_force",
+        "partially_in_force",
+        "suspended",
+        "expired",
+        "repealed"
+      ],
+      "title": "LegalStatus",
+      "type": "string"
+    }
+  },
+  "$id": "urn:pio1:vietlegalcorpus:1.0.0:document_version",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "One exact published version of a legal document.",
+  "properties": {
+    "document_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Document Id",
+      "type": "string"
+    },
+    "document_version_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Document Version Id",
+      "type": "string"
+    },
+    "effective_from": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Effective From"
+    },
+    "effective_to": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Effective To"
+    },
+    "promulgated_on": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Promulgated On"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source_artifact_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Source Artifact Id",
+      "type": "string"
+    },
+    "status": {
+      "$ref": "#/$defs/LegalStatus",
+      "default": "unknown"
+    },
+    "text_sha256": {
+      "pattern": "^[0-9a-f]{64}$",
+      "title": "Text Sha256",
+      "type": "string"
+    },
+    "version_label": {
+      "minLength": 1,
+      "title": "Version Label",
+      "type": "string"
+    }
+  },
+  "required": [
+    "document_version_id",
+    "document_id",
+    "source_artifact_id",
+    "version_label",
+    "text_sha256"
+  ],
+  "title": "DocumentVersion",
+  "type": "object"
+}

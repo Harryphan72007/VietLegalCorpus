@@ -1,0 +1,117 @@
+{
+  "$defs": {
+    "RecordRef": {
+      "additionalProperties": false,
+      "description": "Reference to a versioned document or provision record.",
+      "properties": {
+        "record_id": {
+          "maxLength": 160,
+          "minLength": 3,
+          "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+          "title": "Record Id",
+          "type": "string"
+        },
+        "record_type": {
+          "enum": [
+            "document_version",
+            "provision_version"
+          ],
+          "title": "Record Type",
+          "type": "string"
+        }
+      },
+      "required": [
+        "record_type",
+        "record_id"
+      ],
+      "title": "RecordRef",
+      "type": "object"
+    },
+    "RelationType": {
+      "description": "Relations explicitly asserted by source evidence.",
+      "enum": [
+        "amends",
+        "repeals",
+        "replaces",
+        "implements",
+        "references",
+        "other"
+      ],
+      "title": "RelationType",
+      "type": "string"
+    }
+  },
+  "$id": "urn:pio1:vietlegalcorpus:1.0.0:relation_edge",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Typed, evidence-backed relation between two versioned records.",
+  "properties": {
+    "effective_from": {
+      "anyOf": [
+        {
+          "format": "date",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Effective From"
+    },
+    "evidence_provision_version_ids": {
+      "default": [],
+      "items": {
+        "maxLength": 160,
+        "minLength": 3,
+        "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+        "type": "string"
+      },
+      "title": "Evidence Provision Version Ids",
+      "type": "array"
+    },
+    "note": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Note"
+    },
+    "relation_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Relation Id",
+      "type": "string"
+    },
+    "relation_type": {
+      "$ref": "#/$defs/RelationType"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "source": {
+      "$ref": "#/$defs/RecordRef"
+    },
+    "target": {
+      "$ref": "#/$defs/RecordRef"
+    }
+  },
+  "required": [
+    "relation_id",
+    "relation_type",
+    "source",
+    "target"
+  ],
+  "title": "RelationEdge",
+  "type": "object"
+}

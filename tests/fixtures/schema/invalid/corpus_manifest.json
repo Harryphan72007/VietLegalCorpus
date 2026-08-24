@@ -1,0 +1,11 @@
+{
+  "model": "corpus_manifest",
+  "payload": {
+    "corpus_id": "corpus:pio1:seed",
+    "created_at": "2026-08-24T12:00:00Z",
+    "review_date": "2026-08-24",
+    "generator_version": "vietlegalcorpus/0.1.0",
+    "config_sha256": "dddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddddd",
+    "entries": []
+  }
+}

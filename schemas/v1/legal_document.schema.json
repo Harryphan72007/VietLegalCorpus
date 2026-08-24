@@ -1,0 +1,89 @@
+{
+  "$defs": {
+    "DocumentType": {
+      "description": "Declared document type without inferring legal authority.",
+      "enum": [
+        "constitution",
+        "code",
+        "law",
+        "ordinance",
+        "resolution",
+        "decree",
+        "decision",
+        "circular",
+        "joint_circular",
+        "directive",
+        "other",
+        "unknown"
+      ],
+      "title": "DocumentType",
+      "type": "string"
+    }
+  },
+  "$id": "urn:pio1:vietlegalcorpus:1.0.0:legal_document",
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "additionalProperties": false,
+  "description": "Stable logical identity shared by all versions of one legal document.",
+  "properties": {
+    "document_id": {
+      "maxLength": 160,
+      "minLength": 3,
+      "pattern": "^[A-Za-z0-9][A-Za-z0-9._:-]+$",
+      "title": "Document Id",
+      "type": "string"
+    },
+    "document_type": {
+      "$ref": "#/$defs/DocumentType"
+    },
+    "issuing_authority": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Issuing Authority"
+    },
+    "jurisdiction": {
+      "const": "VN",
+      "default": "VN",
+      "title": "Jurisdiction",
+      "type": "string"
+    },
+    "official_number": {
+      "anyOf": [
+        {
+          "minLength": 1,
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Official Number"
+    },
+    "schema_version": {
+      "const": "1.0.0",
+      "default": "1.0.0",
+      "title": "Schema Version",
+      "type": "string"
+    },
+    "title": {
+      "minLength": 1,
+      "title": "Title",
+      "type": "string"
+    }
+  },
+  "required": [
+    "document_id",
+    "title",
+    "document_type"
+  ],
+  "title": "LegalDocument",
+  "type": "object"
+}

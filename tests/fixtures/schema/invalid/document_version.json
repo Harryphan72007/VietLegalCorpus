@@ -1,0 +1,11 @@
+{
+  "model": "document_version",
+  "payload": {
+    "document_version_id": "document-version:law-01:v1",
+    "document_id": "document:law-01",
+    "source_artifact_id": "artifact:sha256:aaaaaaaaaaaaaaaa",
+    "version_label": "promulgated",
+    "text_sha256": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+    "status": "definitely_valid"
+  }
+}

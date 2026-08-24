@@ -1,0 +1,13 @@
+{
+  "model": "source_artifact",
+  "payload": {
+    "artifact_id": "artifact:bad-hash",
+    "source_locator": "https://example.gov.vn/law/1",
+    "retrieval_method": "official_http",
+    "retrieved_at": "2026-08-24T12:00:00Z",
+    "media_type": "text/html",
+    "byte_length": 120,
+    "sha256": "not-a-sha256",
+    "storage_path": "artifacts/source.html"
+  }
+}
