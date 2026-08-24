@@ -80,7 +80,7 @@ def test_registry_has_explicit_media_type_dispatch() -> None:
     assert isinstance(registry.get("text/plain"), PlainTextParser)
     assert isinstance(registry.get("text/html"), HtmlParser)
     with pytest.raises(ParserError, match="no parser"):
-        registry.get("application/pdf")
+        registry.get("image/png")
     with pytest.raises(ParserError, match="already registered"):
         registry.register(PlainTextParser())
 
