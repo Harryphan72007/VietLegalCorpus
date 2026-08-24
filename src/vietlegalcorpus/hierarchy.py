@@ -155,6 +155,8 @@ def _build_provision(
             source_artifact_id=source_artifact_id,
             start_offset=block.source_start,
             end_offset=block.source_end,
+            page_start=block.page_start,
+            page_end=block.page_end,
         ),
     )
     provisions.append(provision)

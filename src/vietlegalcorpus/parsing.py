@@ -5,10 +5,14 @@ from __future__ import annotations
 import re
 import zipfile
 from dataclasses import dataclass
+from enum import StrEnum
 from html.parser import HTMLParser
 from io import BytesIO
 from typing import Protocol
 from xml.etree import ElementTree
+
+from pypdf import PdfReader
+from pypdf.errors import PdfReadError
 
 from vietlegalcorpus.identity import sha256_bytes
 
@@ -27,6 +31,13 @@ class ParserError(ValueError):
     """A source cannot be handled safely by the selected parser."""
 
 
+class ParseStatus(StrEnum):
+    """Whether text was parsed or must be routed to an OCR stage."""
+
+    PARSED = "parsed"
+    OCR_REQUIRED = "ocr_required"
+
+
 @dataclass(frozen=True, slots=True)
 class ParsedBlock:
     """One deterministic parser block with its unnormalized source text."""
@@ -37,6 +48,8 @@ class ParsedBlock:
     source_kind: str
     source_start: int
     source_end: int
+    page_start: int | None = None
+    page_end: int | None = None
 
 
 @dataclass(frozen=True, slots=True)
@@ -48,6 +61,7 @@ class ParseResult:
     raw_sha256: str
     raw_text: str
     blocks: tuple[ParsedBlock, ...]
+    status: ParseStatus = ParseStatus.PARSED
     warnings: tuple[str, ...] = ()
 
 
@@ -211,6 +225,66 @@ class DocxParser:
             raise ParserError("source is not a valid DOCX package") from exc
 
 
+class PdfParser:
+    """Extract text-layer PDF pages and explicitly route scan-only files to OCR."""
+
+    media_types = frozenset({"application/pdf"})
+    version = "pdf-text/1.0.0"
+
+    def __init__(self, *, minimum_alphanumeric_characters: int = 20) -> None:
+        if minimum_alphanumeric_characters < 1:
+            raise ValueError("minimum_alphanumeric_characters must be positive")
+        self.minimum_alphanumeric_characters = minimum_alphanumeric_characters
+
+    def parse(self, content: bytes) -> ParseResult:
+        if not content.startswith(b"%PDF-"):
+            raise ParserError("source is not a valid PDF")
+        try:
+            reader = PdfReader(BytesIO(content), strict=False)
+        except (PdfReadError, ValueError) as exc:
+            raise ParserError("source is not a valid PDF") from exc
+        if reader.is_encrypted:
+            raise ParserError("encrypted PDFs are not supported")
+
+        pages: list[tuple[int, str]] = []
+        empty_pages: list[int] = []
+        try:
+            for page_number, page in enumerate(reader.pages, start=1):
+                text = _normalize_visible_text(page.extract_text() or "")
+                if text:
+                    pages.append((page_number, text))
+                else:
+                    empty_pages.append(page_number)
+        except (PdfReadError, ValueError) as exc:
+            raise ParserError("PDF text extraction failed") from exc
+
+        warnings: list[str] = []
+        if empty_pages:
+            warnings.append(f"pages without usable text: {', '.join(map(str, empty_pages))}")
+        alphanumeric_count = sum(character.isalnum() for _, text in pages for character in text)
+        if alphanumeric_count < self.minimum_alphanumeric_characters:
+            warnings.append("PDF has no usable text layer; OCR is required")
+            return ParseResult(
+                parser_version=self.version,
+                media_type="application/pdf",
+                raw_sha256=sha256_bytes(content),
+                raw_text="",
+                blocks=(),
+                status=ParseStatus.OCR_REQUIRED,
+                warnings=tuple(warnings),
+            )
+
+        raw_text, blocks = _build_pdf_evidence(pages)
+        return ParseResult(
+            parser_version=self.version,
+            media_type="application/pdf",
+            raw_sha256=sha256_bytes(content),
+            raw_text=raw_text,
+            blocks=blocks,
+            warnings=tuple(warnings),
+        )
+
+
 class _HtmlBlockCollector(HTMLParser):
     def __init__(self, raw_text: str) -> None:
         super().__init__(convert_charrefs=True)
@@ -289,6 +363,7 @@ def default_parser_registry() -> ParserRegistry:
     registry = ParserRegistry()
     registry.register(DocxParser())
     registry.register(HtmlParser())
+    registry.register(PdfParser())
     registry.register(PlainTextParser())
     return registry
 
@@ -367,3 +442,31 @@ def _build_extracted_evidence(
 def _append_warning(warnings: list[str], warning: str) -> None:
     if warning not in warnings:
         warnings.append(warning)
+
+
+def _build_pdf_evidence(
+    pages: list[tuple[int, str]],
+) -> tuple[str, tuple[ParsedBlock, ...]]:
+    evidence_parts: list[str] = []
+    blocks: list[ParsedBlock] = []
+    cursor = 0
+    for page_number, text in pages:
+        if evidence_parts:
+            evidence_parts.append("\n\f\n")
+            cursor += 3
+        start = cursor
+        evidence_parts.append(text)
+        cursor += len(text)
+        blocks.append(
+            ParsedBlock(
+                ordinal=len(blocks),
+                text=text,
+                raw_text=text,
+                source_kind="page",
+                source_start=start,
+                source_end=cursor,
+                page_start=page_number,
+                page_end=page_number,
+            )
+        )
+    return "".join(evidence_parts), tuple(blocks)
