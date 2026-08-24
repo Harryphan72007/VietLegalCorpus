@@ -23,7 +23,7 @@ demo:  ## produce a visible artifact in ./out
 	@mkdir -p out
 	$(PY) -m vietlegalcorpus.cli doctor | tee out/doctor.txt
 
-evaluate:  ## placeholder until an evaluation harness lands (see plan)
-	@echo "no evaluation harness yet"
+evaluate:  ## run corpus invariants against the committed golden bundle
+	$(PY) -m vietlegalcorpus.cli evaluate data/samples/golden-corpus
 
 check: lint typecheck test  ## CI gate + per-PR acceptance gate

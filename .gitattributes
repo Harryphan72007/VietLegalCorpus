@@ -1,1 +1,2 @@
 schemas/v1/*.schema.json text eol=lf
+data/samples/golden-corpus/*.jsonl text eol=lf

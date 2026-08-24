@@ -11,6 +11,7 @@ import typer
 from vietlegalcorpus import __version__
 from vietlegalcorpus.config import load_settings
 from vietlegalcorpus.logging import configure_logging
+from vietlegalcorpus.quality import evaluate_bundle, read_bundle
 from vietlegalcorpus.schemas.export import export_json_schemas
 
 app = typer.Typer(add_completion=False, help="VietLegalCorpus CLI.")
@@ -53,6 +54,15 @@ def export_schemas(
     """Export the versioned corpus contract as JSON Schema files."""
     exported = export_json_schemas(output_dir)
     typer.echo(f"Exported {len(exported)} JSON schemas to {output_dir}")
+
+
+@app.command()
+def evaluate(corpus_dir: Path) -> None:
+    """Run real corpus invariant checks and emit a deterministic JSON report."""
+    report = evaluate_bundle(read_bundle(corpus_dir))
+    typer.echo(report.to_json(), nl=False)
+    if not report.passed:
+        raise typer.Exit(code=1)
 
 
 def _check_writable(path: Path) -> bool:
