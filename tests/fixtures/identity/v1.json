@@ -1,0 +1,21 @@
+{
+  "document_type": "law",
+  "official_number": " 01/2026/QH ",
+  "jurisdiction": "vn",
+  "article_ordinal": "1",
+  "clause_ordinal": " 2 ",
+  "source_text": "Luật mẫu\r\n",
+  "provision_text": "Phạm vi điều chỉnh.",
+  "expected": {
+    "canonical_path": [
+      "article:1",
+      "clause:2"
+    ],
+    "source_sha256": "4217566fa7721d64ecffea8e2959ecc3dc44b1cf8abe7aa4bdfdc422f96efa70",
+    "artifact_id": "artifact:sha256:4217566fa7721d64ecffea8e2959ecc3dc44b1cf8abe7aa4bdfdc422f96efa70",
+    "document_id": "document:sha256:83f09d37335482cbd24de76e82fddfff621248931c07212dd3e9a72516138394",
+    "document_version_id": "document-version:sha256:5c14e0ba329e6153b446463bf0f14db4be58090db2357c9ffcdef2443e3ac148",
+    "provision_id": "provision:sha256:5367dc9b13c682f4ca3876aead4ec12aafe0e0870d75cc570576f998838c3231",
+    "provision_version_id": "provision-version:sha256:8b8baa68d67af0700ed645d1e50cc2a5b0a2301b7f572c77484b9c0f89a796b3"
+  }
+}
