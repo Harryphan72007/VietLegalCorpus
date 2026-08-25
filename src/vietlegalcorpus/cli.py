@@ -2,7 +2,9 @@
 
 from __future__ import annotations
 
+import json
 import platform
+from datetime import date, datetime
 from pathlib import Path
 from typing import Annotated
 
@@ -13,6 +15,8 @@ from vietlegalcorpus.config import load_settings
 from vietlegalcorpus.logging import configure_logging
 from vietlegalcorpus.quality import evaluate_bundle, read_bundle
 from vietlegalcorpus.schemas.export import export_json_schemas
+from vietlegalcorpus.snapshot import build_snapshot as build_corpus_snapshot
+from vietlegalcorpus.snapshot import validate_snapshot as validate_corpus_snapshot
 
 app = typer.Typer(add_completion=False, help="VietLegalCorpus CLI.")
 
@@ -63,6 +67,48 @@ def evaluate(corpus_dir: Path) -> None:
     typer.echo(report.to_json(), nl=False)
     if not report.passed:
         raise typer.Exit(code=1)
+
+
+@app.command("build-snapshot")
+def build_snapshot_command(
+    corpus_dir: Path,
+    output_dir: Path,
+    corpus_id: Annotated[str, typer.Option("--corpus-id")],
+    created_at: Annotated[str, typer.Option("--created-at")],
+    review_date: Annotated[str, typer.Option("--review-date")],
+    config_sha256: Annotated[str, typer.Option("--config-sha256")],
+    generator_version: Annotated[str, typer.Option("--generator-version")] = (
+        "vietlegalcorpus/0.1.0"
+    ),
+) -> None:
+    """Build a deterministic CorpusSnapshot v1 from a validated bundle."""
+    result = build_corpus_snapshot(
+        read_bundle(corpus_dir),
+        output_dir,
+        corpus_id=corpus_id,
+        created_at=datetime.fromisoformat(created_at),
+        review_date=date.fromisoformat(review_date),
+        generator_version=generator_version,
+        config_sha256=config_sha256,
+    )
+    typer.echo(
+        json.dumps(
+            {
+                "ready": result.readiness.ready,
+                "snapshot_sha256": result.snapshot_sha256,
+                "technical_checks_passed": result.readiness.technical_checks_passed,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+
+
+@app.command("validate-snapshot")
+def validate_snapshot_command(snapshot_dir: Path) -> None:
+    """Validate all files and hashes in a CorpusSnapshot v1."""
+    result = validate_corpus_snapshot(snapshot_dir)
+    typer.echo(json.dumps({"snapshot_sha256": result.snapshot_sha256}, indent=2, sort_keys=True))
 
 
 def _check_writable(path: Path) -> bool:
