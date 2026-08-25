@@ -67,7 +67,13 @@ def test_unknown_metadata_is_reported_without_becoming_an_error() -> None:
         update={"status": "unknown", "effective_from": None}
     )
 
-    report = evaluate_bundle(replace(bundle, documents=(document,), document_versions=(version,)))
+    report = evaluate_bundle(
+        replace(
+            bundle,
+            documents=(document, *bundle.documents[1:]),
+            document_versions=(version, *bundle.document_versions[1:]),
+        )
+    )
 
     assert report.error_count == 0
     assert report.warning_count >= 4
