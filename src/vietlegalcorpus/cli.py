@@ -17,6 +17,7 @@ from vietlegalcorpus.quality import evaluate_bundle, read_bundle
 from vietlegalcorpus.schemas.export import export_json_schemas
 from vietlegalcorpus.snapshot import build_snapshot as build_corpus_snapshot
 from vietlegalcorpus.snapshot import validate_snapshot as validate_corpus_snapshot
+from vietlegalcorpus.source_review import read_source_review
 
 app = typer.Typer(add_completion=False, help="VietLegalCorpus CLI.")
 
@@ -80,6 +81,13 @@ def build_snapshot_command(
     generator_version: Annotated[str, typer.Option("--generator-version")] = (
         "vietlegalcorpus/0.1.0"
     ),
+    source_review: Annotated[
+        Path | None,
+        typer.Option(
+            "--source-review",
+            help="Validated official-source review record required for G1 readiness.",
+        ),
+    ] = None,
 ) -> None:
     """Build a deterministic CorpusSnapshot v1 from a validated bundle."""
     result = build_corpus_snapshot(
@@ -90,6 +98,7 @@ def build_snapshot_command(
         review_date=date.fromisoformat(review_date),
         generator_version=generator_version,
         config_sha256=config_sha256,
+        official_source_review=(read_source_review(source_review) if source_review else None),
     )
     typer.echo(
         json.dumps(

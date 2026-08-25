@@ -14,6 +14,7 @@ from vietlegalcorpus.schemas import (
     ManifestEntry,
     RecordType,
 )
+from vietlegalcorpus.source_review import OfficialSourceReview, review_covers_bundle
 
 
 class SnapshotError(ValueError):
@@ -78,7 +79,7 @@ def build_snapshot(
     generator_version: str,
     config_sha256: str,
     target_document_count: int = 5,
-    official_source_review_complete: bool = False,
+    official_source_review: OfficialSourceReview | None = None,
     artifact_source_root: Path | None = None,
 ) -> SnapshotBuild:
     """Build a byte-reproducible snapshot without overwriting an existing build."""
@@ -150,7 +151,8 @@ def build_snapshot(
         bundle,
         quality,
         target_document_count=target_document_count,
-        official_source_review_complete=official_source_review_complete,
+        review_date=review_date,
+        official_source_review=official_source_review,
     )
     (output_dir / "g1_readiness.json").write_text(
         json.dumps(asdict(readiness), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
@@ -229,8 +231,12 @@ def _readiness(
     quality: QualityReport,
     *,
     target_document_count: int,
-    official_source_review_complete: bool,
+    review_date: date,
+    official_source_review: OfficialSourceReview | None,
 ) -> G1Readiness:
+    official_source_review_complete = review_covers_bundle(
+        bundle, official_source_review, review_date=review_date
+    )
     technical = (
         quality.error_count == 0
         and quality.warning_count == 0

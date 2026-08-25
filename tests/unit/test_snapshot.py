@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
 
@@ -7,14 +8,55 @@ import pytest
 from typer.testing import CliRunner
 
 from vietlegalcorpus.cli import app
-from vietlegalcorpus.quality import read_bundle
+from vietlegalcorpus.quality import CorpusBundle, read_bundle
 from vietlegalcorpus.snapshot import SnapshotError, build_snapshot, validate_snapshot
+from vietlegalcorpus.source_review import OfficialSourceReview, ReviewDecision, ReviewedDocument
 
 GOLDEN = Path(__file__).parents[2] / "data" / "samples" / "golden-corpus"
+PENDING_REVIEW = (
+    Path(__file__).parents[2] / "data" / "source-reviews" / "land-law-pilot.pending.json"
+)
 CREATED_AT = datetime(2026, 8, 24, 12, tzinfo=UTC)
 REVIEW_DATE = date(2026, 8, 24)
 CONFIG_SHA256 = "a" * 64
 runner = CliRunner()
+
+
+def approved_review(bundle: CorpusBundle) -> OfficialSourceReview:
+    artifacts = {artifact.artifact_id: artifact for artifact in bundle.source_artifacts}
+    versions = {version.document_id: version for version in bundle.document_versions}
+    documents = []
+    for document in bundle.documents:
+        assert document.official_number is not None
+        version = versions[document.document_id]
+        documents.append(
+            ReviewedDocument(
+                official_number=document.official_number,
+                title=document.title,
+                issuing_authority=document.issuing_authority or "unknown",
+                source_locators=(artifacts[version.source_artifact_id].source_locator,),
+                decision=ReviewDecision.APPROVED,
+            )
+        )
+    return OfficialSourceReview(
+        review_id="source-review:test:approved",
+        scope="Test bundle",
+        review_date=REVIEW_DATE,
+        decision=ReviewDecision.APPROVED,
+        storage_and_reuse_approved=True,
+        reviewed_by="Test legal reviewer",
+        reviewed_at=CREATED_AT,
+        documents=tuple(documents),
+    )
+
+
+def official_bundle() -> CorpusBundle:
+    bundle = read_bundle(GOLDEN)
+    artifacts = tuple(
+        artifact.model_copy(update={"source_locator": f"https://vbpl.vn/test/{index}"})
+        for index, artifact in enumerate(bundle.source_artifacts, start=1)
+    )
+    return replace(bundle, source_artifacts=artifacts)
 
 
 def snapshot_files(root: Path) -> dict[str, bytes]:
@@ -79,6 +121,23 @@ def test_validator_rejects_tampered_snapshot_file(tmp_path: Path) -> None:
         validate_snapshot(output)
 
 
+def test_snapshot_is_ready_only_when_review_covers_exact_bundle(tmp_path: Path) -> None:
+    bundle = official_bundle()
+    result = build_snapshot(
+        bundle,
+        tmp_path / "snapshot",
+        corpus_id="corpus:pio1:vertical-slice",
+        created_at=CREATED_AT,
+        review_date=REVIEW_DATE,
+        generator_version="vietlegalcorpus/0.1.0",
+        config_sha256=CONFIG_SHA256,
+        official_source_review=approved_review(bundle),
+    )
+
+    assert result.readiness.ready
+    assert result.readiness.blockers == ()
+
+
 def test_snapshot_cli_builds_and_validates(tmp_path: Path) -> None:
     output = tmp_path / "snapshot"
     build = runner.invoke(
@@ -95,6 +154,8 @@ def test_snapshot_cli_builds_and_validates(tmp_path: Path) -> None:
             REVIEW_DATE.isoformat(),
             "--config-sha256",
             CONFIG_SHA256,
+            "--source-review",
+            str(PENDING_REVIEW),
         ],
     )
     validate = runner.invoke(app, ["validate-snapshot", str(output)])

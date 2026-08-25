@@ -1,0 +1,62 @@
+{
+  "decision": "pending",
+  "documents": [
+    {
+      "decision": "pending",
+      "issuing_authority": "Quốc hội",
+      "note": "Verify the consolidated effect of later amendments before ingestion.",
+      "official_number": "31/2024/QH15",
+      "source_locators": [
+        "https://vbpl.vn/TW/Pages/ivbpq-toanvan.aspx?ItemID=177815"
+      ],
+      "title": "Luật Đất đai"
+    },
+    {
+      "decision": "pending",
+      "issuing_authority": "Chính phủ",
+      "note": "Partially in force at the proposed review date; review later amendments.",
+      "official_number": "71/2024/NĐ-CP",
+      "source_locators": [
+        "https://vbpl.vn/TW/Pages/vbpq-van-ban-goc.aspx?ItemID=168381"
+      ],
+      "title": "Quy định về giá đất"
+    },
+    {
+      "decision": "pending",
+      "issuing_authority": "Chính phủ",
+      "note": "Partially in force at the proposed review date; review later amendments.",
+      "official_number": "101/2024/NĐ-CP",
+      "source_locators": [
+        "https://vbpl.vn/TW/Pages/ivbpq-toanvan.aspx?ItemID=169188"
+      ],
+      "title": "Quy định về điều tra cơ bản đất đai, đăng ký và hệ thống thông tin đất đai"
+    },
+    {
+      "decision": "pending",
+      "issuing_authority": "Chính phủ",
+      "note": "Partially in force at the proposed review date; review later amendments.",
+      "official_number": "102/2024/NĐ-CP",
+      "source_locators": [
+        "https://vbpl.vn/TW/Pages/vbpq-toanvan.aspx?ItemID=169363"
+      ],
+      "title": "Quy định chi tiết thi hành một số điều của Luật Đất đai"
+    },
+    {
+      "decision": "pending",
+      "issuing_authority": "Chính phủ",
+      "note": "Partially in force at the proposed review date; review later amendments.",
+      "official_number": "103/2024/NĐ-CP",
+      "source_locators": [
+        "https://vbpl.vn/TW/Pages/vbpq-toanvan.aspx?ItemID=172729"
+      ],
+      "title": "Quy định về tiền sử dụng đất, tiền thuê đất"
+    }
+  ],
+  "review_date": "2026-08-25",
+  "review_id": "source-review:land-law-pilot:2026-08-25",
+  "reviewed_at": null,
+  "reviewed_by": null,
+  "schema_version": "1.0.0",
+  "scope": "Five-document central land-law pilot",
+  "storage_and_reuse_approved": false
+}
