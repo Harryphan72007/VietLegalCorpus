@@ -161,6 +161,9 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
         (item.provision_version_id for item in bundle.provision_versions),
     )
     _check_duplicates(issues, "relation", (item.relation_id for item in bundle.relation_edges))
+    _check_duplicates(
+        issues, "source_evidence", (item.source_artifact_id for item in bundle.source_evidence)
+    )
 
     artifacts = {item.artifact_id: item for item in bundle.source_artifacts}
     documents = {item.document_id: item for item in bundle.documents}
@@ -286,6 +289,19 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
                 )
 
     for provision_version in bundle.provision_versions:
+        logical = provisions.get(provision_version.provision_id)
+        version = document_versions.get(provision_version.document_version_id)
+        if logical is not None and version is not None:
+            if logical.document_id != version.document_id:
+                _error(
+                    issues, "provision_document_mismatch", provision_version.provision_version_id,
+                    "provision and version belong to different documents",
+                )
+            if provision_version.source_anchor.source_artifact_id != version.source_artifact_id:
+                _error(
+                    issues, "anchor_artifact_mismatch", provision_version.provision_version_id,
+                    "anchor does not reference the document version source",
+                )
         if provision_version.provision_id not in provisions:
             _error(
                 issues,

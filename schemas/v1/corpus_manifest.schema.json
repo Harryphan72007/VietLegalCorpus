@@ -91,6 +91,19 @@
       "default": "1.0.0",
       "title": "Schema Version",
       "type": "string"
+    },
+    "source_evidence_sha256": {
+      "anyOf": [
+        {
+          "pattern": "^[0-9a-f]{64}$",
+          "type": "string"
+        },
+        {
+          "type": "null"
+        }
+      ],
+      "default": null,
+      "title": "Source Evidence Sha256"
     }
   },
   "required": [

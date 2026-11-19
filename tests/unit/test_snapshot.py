@@ -76,6 +76,27 @@ def test_rehashed_invalid_record_inventory_is_rejected(tmp_path: Path, defect: s
         validate_snapshot(output)
 
 
+def test_snapshot_preserves_evidence_for_quality_validation(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    assert read_bundle(output / "records").source_evidence == read_bundle(GOLDEN).source_evidence
+    path = output / "records/provision_versions.jsonl"
+    records = [json.loads(line) for line in path.read_text(encoding="utf-8").splitlines()]
+    records[0]["document_version_id"] = "document-version:missing"
+    path.write_text("\n".join(json.dumps(record) for record in records) + "\n", encoding="utf-8")
+    refresh_checksums(output)
+    with pytest.raises(SnapshotError, match="quality"):
+        validate_snapshot(output)
+
+
+def test_snapshot_rejects_changed_source_evidence(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    (output / "records/source_evidence.jsonl").write_text("", encoding="utf-8")
+    with pytest.raises(SnapshotError, match="evidence checksum"):
+        validate_snapshot(output)
+
+
 def approved_review(bundle: CorpusBundle) -> OfficialSourceReview:
     artifacts = {artifact.artifact_id: artifact for artifact in bundle.source_artifacts}
     versions = {version.document_id: version for version in bundle.document_versions}

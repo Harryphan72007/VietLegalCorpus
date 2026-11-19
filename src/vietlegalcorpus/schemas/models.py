@@ -289,6 +289,7 @@ class CorpusManifest(ContractModel):
     review_date: date
     generator_version: NonEmptyStr
     config_sha256: Sha256
+    source_evidence_sha256: Sha256 | None = None
     entries: Annotated[tuple[ManifestEntry, ...], Field(min_length=1)]
 
     @model_validator(mode="after")

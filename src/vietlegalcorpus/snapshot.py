@@ -10,7 +10,7 @@ from pathlib import Path
 from pydantic import BaseModel
 
 from vietlegalcorpus.identity import sha256_bytes, sha256_file
-from vietlegalcorpus.quality import CorpusBundle, QualityReport, evaluate_bundle
+from vietlegalcorpus.quality import CorpusBundle, QualityReport, evaluate_bundle, read_bundle
 from vietlegalcorpus.schemas import (
     CorpusManifest,
     DocumentVersion,
@@ -177,12 +177,15 @@ def build_snapshot(
             )
         )
 
+    evidence_path = records_dir / "source_evidence.jsonl"
+    _write_jsonl(bundle.source_evidence, evidence_path, "source_artifact_id")
     manifest = CorpusManifest(
         corpus_id=corpus_id,
         created_at=created_at,
         review_date=review_date,
         generator_version=generator_version,
         config_sha256=config_sha256,
+        source_evidence_sha256=sha256_file(evidence_path),
         entries=tuple(sorted(entries, key=lambda item: item.relative_path)),
     )
     manifest_path = output_dir / "manifest.json"
@@ -229,8 +232,37 @@ def validate_snapshot(snapshot_dir: Path) -> SnapshotValidation:
             raise SnapshotError(f"record count mismatch: {entry.relative_path}")
 
     _validate_record_files(snapshot_dir, manifest)
+    evidence_path = _snapshot_path(snapshot_dir, "records/source_evidence.jsonl")
+    if manifest.source_evidence_sha256 is None:
+        raise SnapshotError("snapshot lacks source evidence integrity metadata; rebuild it")
+    if not evidence_path.is_file() or sha256_file(evidence_path) != manifest.source_evidence_sha256:
+        raise SnapshotError("source evidence checksum mismatch")
+    try:
+        bundle = read_bundle(snapshot_dir / "records")
+    except (OSError, ValueError) as exc:
+        raise SnapshotError("snapshot corpus records are invalid") from exc
+    quality = evaluate_bundle(bundle)
+    if not quality.passed:
+        raise SnapshotError(f"snapshot corpus quality failed: {quality.error_count} errors")
+    artifacts = {artifact.storage_path: artifact for artifact in bundle.source_artifacts}
+    expected_record_paths = {f"records/{filename}" for _, filename, _, _ in _RECORDS}
+    for entry in manifest.entries:
+        if entry.relative_path in expected_record_paths:
+            continue
+        artifact = artifacts.get(entry.relative_path)
+        if (
+            artifact is None
+            or entry.record_type != RecordType.SOURCE_ARTIFACT
+            or entry.sha256 != artifact.sha256
+            or _snapshot_path(snapshot_dir, entry.relative_path).stat().st_size != artifact.byte_length
+        ):
+            raise SnapshotError(f"source artifact inventory mismatch: {entry.relative_path}")
+    if not set(artifacts).issubset(paths):
+        raise SnapshotError("source artifact files are missing from the manifest")
 
-    expected_files = set(paths).union({"manifest.json", "snapshot.sha256", "g1_readiness.json"})
+    expected_files = set(paths).union({
+        "manifest.json", "snapshot.sha256", "g1_readiness.json", "records/source_evidence.jsonl",
+    })
     actual_files = {
         path.relative_to(snapshot_dir).as_posix()
         for path in snapshot_dir.rglob("*")
