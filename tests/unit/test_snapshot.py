@@ -211,6 +211,43 @@ def test_snapshot_is_ready_only_when_review_covers_exact_bundle(tmp_path: Path) 
 
     assert result.readiness.ready
     assert result.readiness.blockers == ()
+    assert validate_snapshot(tmp_path / "snapshot").readiness == result.readiness
+    saved = OfficialSourceReview.model_validate_json(
+        (tmp_path / "snapshot/source_review.json").read_text(encoding="utf-8")
+    )
+    assert saved == approved_review(bundle)
+
+
+@pytest.mark.parametrize("rehash", [False, True])
+def test_readiness_claim_cannot_be_forged(tmp_path: Path, rehash: bool) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    path = output / "g1_readiness.json"
+    report = json.loads(path.read_text(encoding="utf-8"))
+    report["ready"] = True
+    report["blockers"] = []
+    path.write_text(json.dumps(report), encoding="utf-8")
+    if rehash:
+        manifest_path = output / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        manifest["readiness_sha256"] = sha256_file(path)
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+        refresh_checksums(output)
+    with pytest.raises(SnapshotError, match="readiness"):
+        validate_snapshot(output)
+
+
+def test_review_tampering_is_rejected(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    bundle = official_bundle()
+    build_snapshot(
+        bundle, output, corpus_id="corpus:test:review", created_at=CREATED_AT,
+        review_date=REVIEW_DATE, generator_version="test", config_sha256=CONFIG_SHA256,
+        official_source_review=approved_review(bundle),
+    )
+    (output / "source_review.json").write_text("{}", encoding="utf-8")
+    with pytest.raises(SnapshotError, match="review checksum"):
+        validate_snapshot(output)
 
 
 def test_snapshot_cli_builds_and_validates(tmp_path: Path) -> None:
