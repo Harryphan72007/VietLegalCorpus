@@ -294,12 +294,16 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
         if logical is not None and version is not None:
             if logical.document_id != version.document_id:
                 _error(
-                    issues, "provision_document_mismatch", provision_version.provision_version_id,
+                    issues,
+                    "provision_document_mismatch",
+                    provision_version.provision_version_id,
                     "provision and version belong to different documents",
                 )
             if provision_version.source_anchor.source_artifact_id != version.source_artifact_id:
                 _error(
-                    issues, "anchor_artifact_mismatch", provision_version.provision_version_id,
+                    issues,
+                    "anchor_artifact_mismatch",
+                    provision_version.provision_version_id,
                     "anchor does not reference the document version source",
                 )
         if provision_version.provision_id not in provisions:

@@ -93,14 +93,21 @@ def test_cross_document_provision_and_duplicate_evidence_are_rejected() -> None:
     bundle = read_bundle(GOLDEN)
     original = bundle.provision_versions[0]
     other = next(
-        version for version in bundle.document_versions
+        version
+        for version in bundle.document_versions
         if version.document_version_id != original.document_version_id
     )
     broken = original.model_copy(update={"document_version_id": other.document_version_id})
-    report = evaluate_bundle(replace(
-        bundle, provision_versions=(broken, *bundle.provision_versions[1:]),
-        source_evidence=(*bundle.source_evidence, bundle.source_evidence[0]),
-    ))
+    report = evaluate_bundle(
+        replace(
+            bundle,
+            provision_versions=(broken, *bundle.provision_versions[1:]),
+            source_evidence=(*bundle.source_evidence, bundle.source_evidence[0]),
+        )
+    )
     codes = {issue.code for issue in report.issues}
-    assert {"provision_document_mismatch", "anchor_artifact_mismatch",
-            "duplicate_source_evidence_id"} <= codes
+    assert {
+        "provision_document_mismatch",
+        "anchor_artifact_mismatch",
+        "duplicate_source_evidence_id",
+    } <= codes

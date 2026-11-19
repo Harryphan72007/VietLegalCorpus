@@ -26,9 +26,13 @@ runner = CliRunner()
 
 def build_test_snapshot(output: Path) -> None:
     build_snapshot(
-        read_bundle(GOLDEN), output, corpus_id="corpus:test:snapshot",
-        created_at=CREATED_AT, review_date=REVIEW_DATE,
-        generator_version="vietlegalcorpus/0.1.0", config_sha256=CONFIG_SHA256,
+        read_bundle(GOLDEN),
+        output,
+        corpus_id="corpus:test:snapshot",
+        created_at=CREATED_AT,
+        review_date=REVIEW_DATE,
+        generator_version="vietlegalcorpus/0.1.0",
+        config_sha256=CONFIG_SHA256,
     )
 
 
@@ -62,7 +66,8 @@ def test_rehashed_invalid_record_inventory_is_rejected(tmp_path: Path, defect: s
         manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
         if defect == "inventory":
             manifest["entries"] = [
-                entry for entry in manifest["entries"]
+                entry
+                for entry in manifest["entries"]
                 if entry["relative_path"] != "records/legal_documents.jsonl"
             ]
         else:
@@ -241,12 +246,90 @@ def test_review_tampering_is_rejected(tmp_path: Path) -> None:
     output = tmp_path / "snapshot"
     bundle = official_bundle()
     build_snapshot(
-        bundle, output, corpus_id="corpus:test:review", created_at=CREATED_AT,
-        review_date=REVIEW_DATE, generator_version="test", config_sha256=CONFIG_SHA256,
+        bundle,
+        output,
+        corpus_id="corpus:test:review",
+        created_at=CREATED_AT,
+        review_date=REVIEW_DATE,
+        generator_version="test",
+        config_sha256=CONFIG_SHA256,
         official_source_review=approved_review(bundle),
     )
     (output / "source_review.json").write_text("{}", encoding="utf-8")
     with pytest.raises(SnapshotError, match="review checksum"):
+        validate_snapshot(output)
+
+
+@pytest.mark.parametrize("existing_empty", [False, True])
+def test_failed_build_leaves_destination_untouched(tmp_path: Path, existing_empty: bool) -> None:
+    output = tmp_path / "snapshot"
+    if existing_empty:
+        output.mkdir()
+    with pytest.raises(SnapshotError, match="build failed"):
+        build_snapshot(
+            read_bundle(GOLDEN),
+            output,
+            corpus_id="corpus:test:atomic",
+            created_at=CREATED_AT,
+            review_date=REVIEW_DATE,
+            generator_version="test",
+            config_sha256="invalid",
+        )
+    assert output.exists() == existing_empty
+    if existing_empty:
+        assert list(output.iterdir()) == []
+    assert sorted(path.name for path in tmp_path.iterdir()) == (
+        ["snapshot"] if existing_empty else []
+    )
+    build_test_snapshot(output)
+    validate_snapshot(output)
+
+
+def test_existing_snapshot_is_never_overwritten(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    original = snapshot_files(output)
+    with pytest.raises(SnapshotError, match="empty"):
+        build_test_snapshot(output)
+    assert snapshot_files(output) == original
+
+
+def test_artifacts_cannot_overwrite_snapshot_metadata(tmp_path: Path) -> None:
+    bundle = read_bundle(GOLDEN)
+    artifact = bundle.source_artifacts[0].model_copy(update={"storage_path": "manifest.json"})
+    with pytest.raises(SnapshotError, match="reserved path"):
+        build_snapshot(
+            replace(bundle, source_artifacts=(artifact, *bundle.source_artifacts[1:])),
+            tmp_path / "snapshot",
+            corpus_id="corpus:test:collision",
+            created_at=CREATED_AT,
+            review_date=REVIEW_DATE,
+            generator_version="test",
+            config_sha256=CONFIG_SHA256,
+        )
+    assert not (tmp_path / "snapshot").exists()
+
+
+def test_missing_hash_is_a_snapshot_error(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    (output / "snapshot.sha256").unlink()
+    with pytest.raises(SnapshotError):
+        validate_snapshot(output)
+
+
+def test_external_symlink_is_rejected(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    target = output / "records/legal_documents.jsonl"
+    external = tmp_path / "documents.jsonl"
+    external.write_bytes(target.read_bytes())
+    target.unlink()
+    try:
+        target.symlink_to(external)
+    except OSError:
+        pytest.skip("creating symlinks requires platform permission")
+    with pytest.raises(SnapshotError, match="escapes root"):
         validate_snapshot(output)
 
 
