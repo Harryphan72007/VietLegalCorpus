@@ -7,12 +7,20 @@ from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
 
+from pydantic import BaseModel
+
 from vietlegalcorpus.identity import sha256_bytes, sha256_file
 from vietlegalcorpus.quality import CorpusBundle, QualityReport, evaluate_bundle
 from vietlegalcorpus.schemas import (
     CorpusManifest,
+    DocumentVersion,
+    LegalDocument,
     ManifestEntry,
+    Provision,
+    ProvisionVersion,
     RecordType,
+    RelationEdge,
+    SourceArtifact,
 )
 from vietlegalcorpus.source_review import OfficialSourceReview, review_covers_bundle
 
@@ -67,6 +75,43 @@ _RECORDS: tuple[tuple[str, str, RecordType, str], ...] = (
     ),
     ("relation_edges", "relation_edges.jsonl", RecordType.RELATION_EDGE, "relation_id"),
 )
+
+_MODELS: dict[RecordType, type[BaseModel]] = {
+    RecordType.SOURCE_ARTIFACT: SourceArtifact,
+    RecordType.LEGAL_DOCUMENT: LegalDocument,
+    RecordType.DOCUMENT_VERSION: DocumentVersion,
+    RecordType.PROVISION: Provision,
+    RecordType.PROVISION_VERSION: ProvisionVersion,
+    RecordType.RELATION_EDGE: RelationEdge,
+}
+
+
+def _snapshot_path(root: Path, relative_path: str) -> Path:
+    path = root.joinpath(*Path(relative_path).parts)
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise SnapshotError(f"snapshot path escapes root: {relative_path}")
+    if any(parent.is_symlink() for parent in (path, *path.parents) if parent != root.parent):
+        raise SnapshotError(f"snapshot paths must not use symlinks: {relative_path}")
+    return path
+
+
+def _validate_record_files(snapshot_dir: Path, manifest: CorpusManifest) -> None:
+    entries = {entry.relative_path: entry for entry in manifest.entries}
+    for _field, filename, record_type, identifier in _RECORDS:
+        relative_path = f"records/{filename}"
+        entry = entries.get(relative_path)
+        if entry is None or entry.record_type != record_type:
+            raise SnapshotError(f"missing or mistyped record inventory: {relative_path}")
+        identifiers: list[str] = []
+        path = _snapshot_path(snapshot_dir, relative_path)
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            try:
+                record = _MODELS[record_type].model_validate_json(line)
+            except ValueError as exc:
+                raise SnapshotError(f"{relative_path}:{number}: invalid record") from exc
+            identifiers.append(getattr(record, identifier))
+        if identifiers != sorted(set(identifiers)):
+            raise SnapshotError(f"records must have sorted unique IDs: {relative_path}")
 
 
 def build_snapshot(
@@ -174,14 +219,16 @@ def validate_snapshot(snapshot_dir: Path) -> SnapshotValidation:
     if paths != sorted(paths):
         raise SnapshotError("manifest entries are not sorted")
     for entry in manifest.entries:
-        path = snapshot_dir.joinpath(*Path(entry.relative_path).parts)
+        path = _snapshot_path(snapshot_dir, entry.relative_path)
         if not path.is_file():
             raise SnapshotError(f"manifest file is missing: {entry.relative_path}")
         if sha256_file(path) != entry.sha256:
             raise SnapshotError(f"checksum mismatch: {entry.relative_path}")
-        count = _record_count(path) if path.suffix == ".jsonl" else 1
+        count = _record_count(path) if entry.relative_path.startswith("records/") else 1
         if count != entry.record_count:
             raise SnapshotError(f"record count mismatch: {entry.relative_path}")
+
+    _validate_record_files(snapshot_dir, manifest)
 
     expected_files = set(paths).union({"manifest.json", "snapshot.sha256", "g1_readiness.json"})
     actual_files = {

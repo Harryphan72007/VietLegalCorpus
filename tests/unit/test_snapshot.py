@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import json
 from dataclasses import replace
 from datetime import UTC, date, datetime
 from pathlib import Path
@@ -8,6 +9,7 @@ import pytest
 from typer.testing import CliRunner
 
 from vietlegalcorpus.cli import app
+from vietlegalcorpus.identity import sha256_file
 from vietlegalcorpus.quality import CorpusBundle, read_bundle
 from vietlegalcorpus.snapshot import SnapshotError, build_snapshot, validate_snapshot
 from vietlegalcorpus.source_review import OfficialSourceReview, ReviewDecision, ReviewedDocument
@@ -20,6 +22,58 @@ CREATED_AT = datetime(2026, 8, 24, 12, tzinfo=UTC)
 REVIEW_DATE = date(2026, 8, 24)
 CONFIG_SHA256 = "a" * 64
 runner = CliRunner()
+
+
+def build_test_snapshot(output: Path) -> None:
+    build_snapshot(
+        read_bundle(GOLDEN), output, corpus_id="corpus:test:snapshot",
+        created_at=CREATED_AT, review_date=REVIEW_DATE,
+        generator_version="vietlegalcorpus/0.1.0", config_sha256=CONFIG_SHA256,
+    )
+
+
+def refresh_checksums(output: Path) -> None:
+    """Simulate a producer publishing internally hashed but invalid content."""
+    manifest_path = output / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    for entry in manifest["entries"]:
+        path = output / entry["relative_path"]
+        entry["sha256"] = sha256_file(path)
+        if entry["relative_path"].startswith("records/"):
+            entry["record_count"] = len(path.read_text(encoding="utf-8").splitlines())
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    (output / "snapshot.sha256").write_text(sha256_file(manifest_path), encoding="ascii")
+
+
+@pytest.mark.parametrize("defect", ["schema", "duplicate", "order", "inventory", "type"])
+def test_rehashed_invalid_record_inventory_is_rejected(tmp_path: Path, defect: str) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    path = output / "records/legal_documents.jsonl"
+    lines = path.read_text(encoding="utf-8").splitlines()
+    if defect == "schema":
+        lines[0] = '{"unexpected":true}'
+    elif defect == "duplicate":
+        lines.append(lines[0])
+    elif defect == "order":
+        lines.reverse()
+    elif defect in {"inventory", "type"}:
+        manifest_path = output / "manifest.json"
+        manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+        if defect == "inventory":
+            manifest["entries"] = [
+                entry for entry in manifest["entries"]
+                if entry["relative_path"] != "records/legal_documents.jsonl"
+            ]
+        else:
+            for entry in manifest["entries"]:
+                if entry["relative_path"] == "records/legal_documents.jsonl":
+                    entry["record_type"] = "provision"
+        manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    path.write_text("\n".join(lines) + "\n", encoding="utf-8")
+    refresh_checksums(output)
+    with pytest.raises(SnapshotError):
+        validate_snapshot(output)
 
 
 def approved_review(bundle: CorpusBundle) -> OfficialSourceReview:
