@@ -6,6 +6,7 @@ import json
 import platform
 from datetime import date, datetime
 from pathlib import Path
+from tempfile import NamedTemporaryFile
 from typing import Annotated
 
 import typer
@@ -123,9 +124,8 @@ def validate_snapshot_command(snapshot_dir: Path) -> None:
 def _check_writable(path: Path) -> bool:
     try:
         path.mkdir(parents=True, exist_ok=True)
-        probe = path / ".write_probe"
-        probe.write_text("ok", encoding="utf-8")
-        probe.unlink()
+        with NamedTemporaryFile(dir=path):
+            pass
         return True
     except OSError:
         return False
