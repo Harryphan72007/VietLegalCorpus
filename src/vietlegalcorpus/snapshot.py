@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
@@ -276,9 +277,19 @@ def _build_snapshot(
     return SnapshotBuild(manifest, snapshot_sha256, readiness)
 
 
-def validate_snapshot(snapshot_dir: Path) -> SnapshotValidation:
-    """Validate a complete snapshot, reporting corrupt inputs as SnapshotError."""
+def validate_snapshot(
+    snapshot_dir: Path,
+    *,
+    expected_sha256: str | None = None,
+) -> SnapshotValidation:
+    """Validate integrity, optionally pinning the manifest to a trusted external digest."""
     try:
+        if expected_sha256 is not None:
+            if re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
+                raise SnapshotError("expected_sha256 must be 64 lowercase hexadecimal characters")
+            manifest_hash = sha256_file(_snapshot_path(snapshot_dir, "manifest.json"))
+            if manifest_hash != expected_sha256:
+                raise SnapshotError("snapshot does not match the expected SHA-256")
         return _validate_snapshot(snapshot_dir)
     except (OSError, ValueError) as exc:
         if isinstance(exc, SnapshotError):

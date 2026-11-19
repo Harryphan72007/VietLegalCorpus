@@ -24,6 +24,37 @@ CONFIG_SHA256 = "a" * 64
 runner = CliRunner()
 
 
+def test_snapshot_can_be_pinned_to_an_external_digest(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    trusted = sha256_file(output / "manifest.json")
+    assert validate_snapshot(output, expected_sha256=trusted).snapshot_sha256 == trusted
+    # A different, internally consistent package must not satisfy the original pin.
+    manifest_path = output / "manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    manifest["config_sha256"] = "b" * 64
+    manifest_path.write_text(json.dumps(manifest), encoding="utf-8")
+    refresh_checksums(output)
+    validate_snapshot(output)
+    with pytest.raises(SnapshotError, match="expected SHA-256"):
+        validate_snapshot(output, expected_sha256=trusted)
+
+
+@pytest.mark.parametrize("digest", ["", "abc", "g" * 64, "A" * 64, "a" * 64 + "\n"])
+def test_invalid_external_digest_is_rejected(tmp_path: Path, digest: str) -> None:
+    with pytest.raises(SnapshotError, match="lowercase hexadecimal"):
+        validate_snapshot(tmp_path, expected_sha256=digest)
+
+
+def test_matching_manifest_pin_still_checks_record_integrity(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    trusted = sha256_file(output / "manifest.json")
+    (output / "records/provisions.jsonl").write_text("{}\n", encoding="utf-8")
+    with pytest.raises(SnapshotError, match="checksum"):
+        validate_snapshot(output, expected_sha256=trusted)
+
+
 def build_test_snapshot(output: Path) -> None:
     build_snapshot(
         read_bundle(GOLDEN),
