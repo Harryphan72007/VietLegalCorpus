@@ -359,3 +359,92 @@ def test_snapshot_cli_builds_and_validates(tmp_path: Path) -> None:
     assert '"ready": false' in build.stdout
     assert validate.exit_code == 0
     assert "snapshot_sha256" in validate.stdout
+
+
+def test_cli_readiness_gate_reports_pending_review(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    result = runner.invoke(app, ["validate-snapshot", str(output), "--require-ready"])
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["blockers"] == ["official source review is incomplete"]
+
+
+def test_cli_readiness_gate_accepts_approved_snapshot(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    bundle = official_bundle()
+    build_snapshot(
+        bundle,
+        output,
+        corpus_id="corpus:test:gate",
+        created_at=CREATED_AT,
+        review_date=REVIEW_DATE,
+        generator_version="test",
+        config_sha256=CONFIG_SHA256,
+        official_source_review=approved_review(bundle),
+    )
+    result = runner.invoke(app, ["validate-snapshot", str(output), "--require-ready"])
+    assert result.exit_code == 0
+    assert json.loads(result.stdout)["ready"] is True
+
+
+def test_cli_invalid_snapshot_has_readable_error(tmp_path: Path) -> None:
+    result = runner.invoke(app, ["validate-snapshot", str(tmp_path)])
+    assert result.exit_code == 1
+    assert "Error: manifest is missing or invalid" in result.stderr
+
+
+def test_cli_build_exposes_target_and_original_bytes(tmp_path: Path) -> None:
+    bundle = read_bundle(GOLDEN)
+    source = tmp_path / "source"
+    evidence = {item.source_artifact_id: item.text for item in bundle.source_evidence}
+    for artifact in bundle.source_artifacts:
+        path = source / artifact.storage_path
+        path.parent.mkdir(parents=True, exist_ok=True)
+        path.write_bytes(evidence[artifact.artifact_id].encode("utf-8"))
+    output = tmp_path / "snapshot"
+    result = runner.invoke(
+        app,
+        [
+            "build-snapshot",
+            str(GOLDEN),
+            str(output),
+            "--corpus-id",
+            "corpus:test:cli",
+            "--created-at",
+            CREATED_AT.isoformat(),
+            "--review-date",
+            REVIEW_DATE.isoformat(),
+            "--config-sha256",
+            CONFIG_SHA256,
+            "--target-document-count",
+            "6",
+            "--artifact-source-root",
+            str(source),
+        ],
+    )
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["technical_checks_passed"] is False
+    assert validate_snapshot(output).readiness.target_document_count == 6
+
+
+def test_cli_build_failure_has_no_partial_output(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    result = runner.invoke(
+        app,
+        [
+            "build-snapshot",
+            str(GOLDEN),
+            str(output),
+            "--corpus-id",
+            "corpus:test:cli",
+            "--created-at",
+            "invalid",
+            "--review-date",
+            REVIEW_DATE.isoformat(),
+            "--config-sha256",
+            CONFIG_SHA256,
+        ],
+    )
+    assert result.exit_code == 1
+    assert "Error:" in result.stderr
+    assert not output.exists()

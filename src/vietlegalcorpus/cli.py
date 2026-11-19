@@ -88,18 +88,31 @@ def build_snapshot_command(
             help="Validated official-source review record required for G1 readiness.",
         ),
     ] = None,
+    target_document_count: Annotated[int, typer.Option("--target-document-count", min=1)] = 5,
+    artifact_source_root: Annotated[
+        Path | None,
+        typer.Option(
+            "--artifact-source-root", help="Root containing original source artifact bytes."
+        ),
+    ] = None,
 ) -> None:
     """Build a deterministic CorpusSnapshot v1 from a validated bundle."""
-    result = build_corpus_snapshot(
-        read_bundle(corpus_dir),
-        output_dir,
-        corpus_id=corpus_id,
-        created_at=datetime.fromisoformat(created_at),
-        review_date=date.fromisoformat(review_date),
-        generator_version=generator_version,
-        config_sha256=config_sha256,
-        official_source_review=(read_source_review(source_review) if source_review else None),
-    )
+    try:
+        result = build_corpus_snapshot(
+            read_bundle(corpus_dir),
+            output_dir,
+            corpus_id=corpus_id,
+            created_at=datetime.fromisoformat(created_at),
+            review_date=date.fromisoformat(review_date),
+            generator_version=generator_version,
+            config_sha256=config_sha256,
+            official_source_review=(read_source_review(source_review) if source_review else None),
+            target_document_count=target_document_count,
+            artifact_source_root=artifact_source_root,
+        )
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
     typer.echo(
         json.dumps(
             {
@@ -114,10 +127,32 @@ def build_snapshot_command(
 
 
 @app.command("validate-snapshot")
-def validate_snapshot_command(snapshot_dir: Path) -> None:
+def validate_snapshot_command(
+    snapshot_dir: Path,
+    require_ready: Annotated[
+        bool, typer.Option("--require-ready", help="Fail if G1 readiness is incomplete.")
+    ] = False,
+) -> None:
     """Validate all files and hashes in a CorpusSnapshot v1."""
-    result = validate_corpus_snapshot(snapshot_dir)
-    typer.echo(json.dumps({"snapshot_sha256": result.snapshot_sha256}, indent=2, sort_keys=True))
+    try:
+        result = validate_corpus_snapshot(snapshot_dir)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(
+        json.dumps(
+            {
+                "snapshot_sha256": result.snapshot_sha256,
+                "ready": result.readiness.ready,
+                "technical_checks_passed": result.readiness.technical_checks_passed,
+                "blockers": result.readiness.blockers,
+            },
+            indent=2,
+            sort_keys=True,
+        )
+    )
+    if require_ready and not result.readiness.ready:
+        raise typer.Exit(code=1)
 
 
 def _check_writable(path: Path) -> bool:
