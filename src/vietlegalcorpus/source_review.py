@@ -134,6 +134,8 @@ def review_covers_bundle(
         return False
 
     artifacts = {artifact.artifact_id: artifact for artifact in bundle.source_artifacts}
+    covered_documents: set[str] = set()
+    covered_artifacts: set[str] = set()
     for version in bundle.document_versions:
         corpus_document = corpus_by_id.get(version.document_id)
         artifact = artifacts.get(version.source_artifact_id)
@@ -145,4 +147,10 @@ def review_covers_bundle(
             or artifact.source_locator not in reviewed.source_locators
         ):
             return False
-    return True
+        covered_documents.add(version.document_id)
+        covered_artifacts.add(version.source_artifact_id)
+    return (
+        bool(corpus_by_id)
+        and covered_documents == set(corpus_by_id)
+        and covered_artifacts == set(artifacts)
+    )
