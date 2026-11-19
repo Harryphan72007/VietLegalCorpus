@@ -129,13 +129,17 @@ def build_snapshot_command(
 @app.command("validate-snapshot")
 def validate_snapshot_command(
     snapshot_dir: Path,
+    expected_sha256: Annotated[
+        str | None,
+        typer.Option("--expected-sha256", help="Trusted SHA-256 of the expected manifest bytes."),
+    ] = None,
     require_ready: Annotated[
         bool, typer.Option("--require-ready", help="Fail if G1 readiness is incomplete.")
     ] = False,
 ) -> None:
     """Validate all files and hashes in a CorpusSnapshot v1."""
     try:
-        result = validate_corpus_snapshot(snapshot_dir)
+        result = validate_corpus_snapshot(snapshot_dir, expected_sha256=expected_sha256)
     except (OSError, ValueError) as exc:
         typer.echo(f"Error: {exc}", err=True)
         raise typer.Exit(code=1) from exc

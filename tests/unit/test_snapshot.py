@@ -24,6 +24,29 @@ CONFIG_SHA256 = "a" * 64
 runner = CliRunner()
 
 
+def test_cli_can_require_both_trusted_digest_and_readiness(tmp_path: Path) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    trusted = sha256_file(output / "manifest.json")
+    args = ["validate-snapshot", str(output), "--expected-sha256", trusted]
+    result = runner.invoke(app, args)
+    assert result.exit_code == 0, result.output
+    assert json.loads(result.stdout)["snapshot_sha256"] == trusted
+    result = runner.invoke(app, [*args, "--require-ready"])
+    assert result.exit_code == 1
+    assert json.loads(result.stdout)["ready"] is False
+
+
+@pytest.mark.parametrize("digest", ["bad-digest", "0" * 64])
+def test_cli_rejects_invalid_or_mismatched_expected_digest(tmp_path: Path, digest: str) -> None:
+    output = tmp_path / "snapshot"
+    build_test_snapshot(output)
+    result = runner.invoke(app, ["validate-snapshot", str(output), "--expected-sha256", digest])
+    assert result.exit_code == 1
+    assert "Error:" in result.stderr
+    assert result.stdout == ""
+
+
 def test_snapshot_can_be_pinned_to_an_external_digest(tmp_path: Path) -> None:
     output = tmp_path / "snapshot"
     build_test_snapshot(output)

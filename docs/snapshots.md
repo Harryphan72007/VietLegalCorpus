@@ -77,6 +77,25 @@ Snapshot hashes detect corruption and bind the package's contents. They do not
 authenticate the reviewer or publisher. Verify the expected snapshot hash through
 a trusted channel when accepting a package from another party.
 
+To pin a downstream job to the reviewed package, pass its independently obtained
+manifest checksum with `--expected-sha256`:
+
+```sh
+vlc validate-snapshot out/example-snapshot --expected-sha256 <trusted-sha256> --require-ready
+```
+
+Replace `<trusted-sha256>` with the actual 64-character lowercase hexadecimal
+digest. Do not use a digest read from the untrusted package as your trust anchor.
+The expected digest is checked before parsing corpus records; a matching digest
+still requires all integrity and quality checks to pass. Python callers can use
+`validate_snapshot(path, expected_sha256=trusted_digest)` for the same behavior.
+
+Quality validation now also requires every document version's text checksum to
+match its decoded source evidence. Evidence referencing unknown artifacts and
+relation endpoints whose IDs belong to a different record family are rejected.
+Official review requires a source version for every document and coverage for
+every stored artifact; unused unreviewed artifacts prevent G1 readiness.
+
 Build and validation failures print an error to stderr and exit with status 1.
 `validate-snapshot --require-ready` also exits with status 1 for a valid snapshot
 whose G1 gate is incomplete, while retaining its machine-readable JSON report.
