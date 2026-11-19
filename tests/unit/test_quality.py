@@ -3,14 +3,42 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from vietlegalcorpus.cli import app
 from vietlegalcorpus.quality import SourceEvidence, evaluate_bundle, read_bundle, write_bundle
-from vietlegalcorpus.schemas import SourceAnchor
+from vietlegalcorpus.schemas import RecordRef, RecordType, RelationEdge, RelationType, SourceAnchor
 
 GOLDEN = Path(__file__).parents[2] / "data" / "samples" / "golden-corpus"
 runner = CliRunner()
+
+
+@pytest.mark.parametrize("endpoint", ["source", "target"])
+def test_relation_endpoints_must_match_their_declared_family(endpoint: str) -> None:
+    bundle = read_bundle(GOLDEN)
+    edge = RelationEdge(
+        relation_id="relation:test:reference",
+        relation_type=RelationType.REFERENCES,
+        source=RecordRef(
+            record_type=RecordType.DOCUMENT_VERSION,
+            record_id=bundle.document_versions[0].document_version_id,
+        ),
+        target=RecordRef(
+            record_type=RecordType.PROVISION_VERSION,
+            record_id=bundle.provision_versions[0].provision_version_id,
+        ),
+    )
+    assert evaluate_bundle(replace(bundle, relation_edges=(edge,))).passed
+    original = getattr(edge, endpoint)
+    wrong_type = (
+        RecordType.PROVISION_VERSION if endpoint == "source" else RecordType.DOCUMENT_VERSION
+    )
+    broken = edge.model_copy(
+        update={endpoint: original.model_copy(update={"record_type": wrong_type})}
+    )
+    report = evaluate_bundle(replace(bundle, relation_edges=(broken,)))
+    assert "missing_relation_endpoint" in {issue.code for issue in report.issues}
 
 
 def test_document_evidence_must_exist_and_match_declared_text_hash() -> None:

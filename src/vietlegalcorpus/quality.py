@@ -24,6 +24,7 @@ from vietlegalcorpus.schemas import (
     LegalStatus,
     Provision,
     ProvisionVersion,
+    RecordType,
     RelationEdge,
     SourceArtifact,
 )
@@ -380,14 +381,19 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
                 "anchor exceeds evidence",
             )
 
-    known_refs = set(document_versions).union(provision_versions)
+    known_refs = {
+        RecordType.DOCUMENT_VERSION: set(document_versions),
+        RecordType.PROVISION_VERSION: set(provision_versions),
+    }
     for edge in bundle.relation_edges:
-        if edge.source.record_id not in known_refs or edge.target.record_id not in known_refs:
+        if any(
+            ref.record_id not in known_refs[ref.record_type] for ref in (edge.source, edge.target)
+        ):
             _error(
                 issues,
                 "missing_relation_endpoint",
                 edge.relation_id,
-                "relation endpoint is missing",
+                "relation endpoint is missing from its declared record family",
             )
         if any(item not in provision_versions for item in edge.evidence_provision_version_ids):
             _error(
