@@ -172,6 +172,15 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
     provision_versions = {item.provision_version_id: item for item in bundle.provision_versions}
     evidence = {item.source_artifact_id: item.text for item in bundle.source_evidence}
 
+    for item in bundle.source_evidence:
+        if item.source_artifact_id not in artifacts:
+            _error(
+                issues,
+                "orphan_source_evidence",
+                item.source_artifact_id,
+                "decoded evidence references an unknown artifact",
+            )
+
     for source_artifact in bundle.source_artifacts:
         if source_artifact.artifact_id != artifact_identifier(source_artifact.sha256):
             _error(
@@ -208,6 +217,21 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
             )
 
     for document_version in bundle.document_versions:
+        decoded = evidence.get(document_version.source_artifact_id)
+        if decoded is None:
+            _error(
+                issues,
+                "missing_document_evidence",
+                document_version.document_version_id,
+                "document version has no decoded source evidence",
+            )
+        elif sha256_text(decoded) != document_version.text_sha256:
+            _error(
+                issues,
+                "document_text_checksum_mismatch",
+                document_version.document_version_id,
+                "document text checksum disagrees with decoded source evidence",
+            )
         referenced_artifact = artifacts.get(document_version.source_artifact_id)
         if document_version.document_id not in documents:
             _error(

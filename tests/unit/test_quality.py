@@ -6,11 +6,30 @@ from pathlib import Path
 from typer.testing import CliRunner
 
 from vietlegalcorpus.cli import app
-from vietlegalcorpus.quality import evaluate_bundle, read_bundle, write_bundle
+from vietlegalcorpus.quality import SourceEvidence, evaluate_bundle, read_bundle, write_bundle
 from vietlegalcorpus.schemas import SourceAnchor
 
 GOLDEN = Path(__file__).parents[2] / "data" / "samples" / "golden-corpus"
 runner = CliRunner()
+
+
+def test_document_evidence_must_exist_and_match_declared_text_hash() -> None:
+    bundle = read_bundle(GOLDEN)
+    first = bundle.source_evidence[0]
+    changed = first.model_copy(update={"text": first.text + " altered"})
+    report = evaluate_bundle(
+        replace(bundle, source_evidence=(changed, *bundle.source_evidence[1:]))
+    )
+    assert "document_text_checksum_mismatch" in {issue.code for issue in report.issues}
+    report = evaluate_bundle(replace(bundle, source_evidence=bundle.source_evidence[1:]))
+    assert "missing_document_evidence" in {issue.code for issue in report.issues}
+
+
+def test_unknown_artifact_evidence_is_rejected() -> None:
+    bundle = read_bundle(GOLDEN)
+    orphan = SourceEvidence(source_artifact_id="artifact:missing", text="untracked")
+    report = evaluate_bundle(replace(bundle, source_evidence=(*bundle.source_evidence, orphan)))
+    assert "orphan_source_evidence" in {issue.code for issue in report.issues}
 
 
 def test_golden_bundle_round_trips_byte_for_byte_and_passes(tmp_path: Path) -> None:
