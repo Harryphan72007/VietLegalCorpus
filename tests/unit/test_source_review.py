@@ -121,3 +121,26 @@ def test_source_locator_rejects_non_official_or_credentialed_urls() -> None:
                 issuing_authority="Quốc hội",
                 source_locators=(locator,),
             )
+
+
+@pytest.mark.parametrize("remove_all", [False, True])
+def test_review_requires_a_source_version_for_every_document(remove_all: bool) -> None:
+    bundle = official_bundle()
+    review = approved_review(bundle)
+    incomplete = replace(
+        bundle, document_versions=() if remove_all else bundle.document_versions[1:]
+    )
+    assert not review_covers_bundle(incomplete, review, review_date=review.review_date)
+
+
+def test_review_cannot_approve_an_unreferenced_stored_artifact() -> None:
+    bundle = official_bundle()
+    review = approved_review(bundle)
+    extra = bundle.source_artifacts[0].model_copy(
+        update={
+            "artifact_id": "artifact:unreviewed",
+            "source_locator": "https://example.com/unreviewed",
+        }
+    )
+    incomplete = replace(bundle, source_artifacts=(*bundle.source_artifacts, extra))
+    assert not review_covers_bundle(incomplete, review, review_date=review.review_date)

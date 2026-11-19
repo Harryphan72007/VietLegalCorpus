@@ -3,18 +3,32 @@
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import asdict, dataclass
 from datetime import date, datetime
 from pathlib import Path
+from tempfile import TemporaryDirectory
+
+from pydantic import BaseModel
 
 from vietlegalcorpus.identity import sha256_bytes, sha256_file
-from vietlegalcorpus.quality import CorpusBundle, QualityReport, evaluate_bundle
+from vietlegalcorpus.quality import CorpusBundle, QualityReport, evaluate_bundle, read_bundle
 from vietlegalcorpus.schemas import (
     CorpusManifest,
+    DocumentVersion,
+    LegalDocument,
     ManifestEntry,
+    Provision,
+    ProvisionVersion,
     RecordType,
+    RelationEdge,
+    SourceArtifact,
 )
-from vietlegalcorpus.source_review import OfficialSourceReview, review_covers_bundle
+from vietlegalcorpus.source_review import (
+    OfficialSourceReview,
+    read_source_review,
+    review_covers_bundle,
+)
 
 
 class SnapshotError(ValueError):
@@ -47,6 +61,7 @@ class SnapshotBuild:
 class SnapshotValidation:
     manifest: CorpusManifest
     snapshot_sha256: str
+    readiness: G1Readiness
 
 
 _RECORDS: tuple[tuple[str, str, RecordType, str], ...] = (
@@ -68,6 +83,43 @@ _RECORDS: tuple[tuple[str, str, RecordType, str], ...] = (
     ("relation_edges", "relation_edges.jsonl", RecordType.RELATION_EDGE, "relation_id"),
 )
 
+_MODELS: dict[RecordType, type[BaseModel]] = {
+    RecordType.SOURCE_ARTIFACT: SourceArtifact,
+    RecordType.LEGAL_DOCUMENT: LegalDocument,
+    RecordType.DOCUMENT_VERSION: DocumentVersion,
+    RecordType.PROVISION: Provision,
+    RecordType.PROVISION_VERSION: ProvisionVersion,
+    RecordType.RELATION_EDGE: RelationEdge,
+}
+
+
+def _snapshot_path(root: Path, relative_path: str) -> Path:
+    path = root.joinpath(*Path(relative_path).parts)
+    if not path.resolve().is_relative_to(root.resolve()):
+        raise SnapshotError(f"snapshot path escapes root: {relative_path}")
+    if any(parent.is_symlink() for parent in (path, *path.parents) if parent != root.parent):
+        raise SnapshotError(f"snapshot paths must not use symlinks: {relative_path}")
+    return path
+
+
+def _validate_record_files(snapshot_dir: Path, manifest: CorpusManifest) -> None:
+    entries = {entry.relative_path: entry for entry in manifest.entries}
+    for _field, filename, record_type, identifier in _RECORDS:
+        relative_path = f"records/{filename}"
+        entry = entries.get(relative_path)
+        if entry is None or entry.record_type != record_type:
+            raise SnapshotError(f"missing or mistyped record inventory: {relative_path}")
+        identifiers: list[str] = []
+        path = _snapshot_path(snapshot_dir, relative_path)
+        for number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), 1):
+            try:
+                record = _MODELS[record_type].model_validate_json(line)
+            except ValueError as exc:
+                raise SnapshotError(f"{relative_path}:{number}: invalid record") from exc
+            identifiers.append(getattr(record, identifier))
+        if identifiers != sorted(set(identifiers)):
+            raise SnapshotError(f"records must have sorted unique IDs: {relative_path}")
+
 
 def build_snapshot(
     bundle: CorpusBundle,
@@ -83,6 +135,50 @@ def build_snapshot(
     artifact_source_root: Path | None = None,
 ) -> SnapshotBuild:
     """Build a byte-reproducible snapshot without overwriting an existing build."""
+    if output_dir.is_symlink() or (
+        output_dir.exists() and (not output_dir.is_dir() or any(output_dir.iterdir()))
+    ):
+        raise SnapshotError("snapshot output directory must be empty")
+    try:
+        output_dir.parent.mkdir(parents=True, exist_ok=True)
+        with TemporaryDirectory(prefix=".vlc-snapshot-", dir=output_dir.parent) as temporary:
+            staged = Path(temporary) / "snapshot"
+            result = _build_snapshot(
+                bundle,
+                staged,
+                corpus_id=corpus_id,
+                created_at=created_at,
+                review_date=review_date,
+                generator_version=generator_version,
+                config_sha256=config_sha256,
+                target_document_count=target_document_count,
+                official_source_review=official_source_review,
+                artifact_source_root=artifact_source_root,
+            )
+            validate_snapshot(staged)
+            if output_dir.exists():
+                output_dir.rmdir()  # Fails safely if another writer populated the directory.
+            staged.rename(output_dir)
+            return result
+    except (OSError, ValueError) as exc:
+        if isinstance(exc, SnapshotError):
+            raise
+        raise SnapshotError(f"snapshot build failed: {exc}") from exc
+
+
+def _build_snapshot(
+    bundle: CorpusBundle,
+    output_dir: Path,
+    *,
+    corpus_id: str,
+    created_at: datetime,
+    review_date: date,
+    generator_version: str,
+    config_sha256: str,
+    target_document_count: int,
+    official_source_review: OfficialSourceReview | None,
+    artifact_source_root: Path | None,
+) -> SnapshotBuild:
     if target_document_count < 1:
         raise SnapshotError("target_document_count must be positive")
     if output_dir.exists() and any(output_dir.iterdir()):
@@ -111,10 +207,18 @@ def build_snapshot(
 
     evidence = {item.source_artifact_id: item.text for item in bundle.source_evidence}
     for artifact in sorted(bundle.source_artifacts, key=lambda item: item.artifact_id):
-        destination = output_dir.joinpath(*Path(artifact.storage_path).parts)
+        if artifact.storage_path.split("/")[0] in {
+            "records",
+            "manifest.json",
+            "snapshot.sha256",
+            "g1_readiness.json",
+            "source_review.json",
+        }:
+            raise SnapshotError(f"source artifact uses reserved path: {artifact.storage_path}")
+        destination = _snapshot_path(output_dir, artifact.storage_path)
         destination.parent.mkdir(parents=True, exist_ok=True)
         if artifact_source_root is not None:
-            content = artifact_source_root.joinpath(*Path(artifact.storage_path).parts).read_bytes()
+            content = _snapshot_path(artifact_source_root, artifact.storage_path).read_bytes()
         else:
             text = evidence.get(artifact.artifact_id)
             if text is None:
@@ -122,6 +226,8 @@ def build_snapshot(
             content = text.encode("utf-8")
         if sha256_bytes(content) != artifact.sha256:
             raise SnapshotError(f"source bytes disagree with {artifact.artifact_id}")
+        if len(content) != artifact.byte_length:
+            raise SnapshotError(f"source byte length disagrees with {artifact.artifact_id}")
         destination.write_bytes(content)
         entries.append(
             ManifestEntry(
@@ -132,12 +238,33 @@ def build_snapshot(
             )
         )
 
+    evidence_path = records_dir / "source_evidence.jsonl"
+    _write_jsonl(bundle.source_evidence, evidence_path, "source_artifact_id")
+    review_path = output_dir / "source_review.json"
+    if official_source_review is not None:
+        review_path.write_bytes(_model_json_bytes(official_source_review))
+    readiness = _readiness(
+        bundle,
+        quality,
+        target_document_count=target_document_count,
+        review_date=review_date,
+        official_source_review=official_source_review,
+    )
+    readiness_path = output_dir / "g1_readiness.json"
+    readiness_path.write_text(
+        json.dumps(asdict(readiness), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+        newline="\n",
+    )
     manifest = CorpusManifest(
         corpus_id=corpus_id,
         created_at=created_at,
         review_date=review_date,
         generator_version=generator_version,
         config_sha256=config_sha256,
+        source_evidence_sha256=sha256_file(evidence_path),
+        source_review_sha256=sha256_file(review_path) if official_source_review else None,
+        readiness_sha256=sha256_file(readiness_path),
         entries=tuple(sorted(entries, key=lambda item: item.relative_path)),
     )
     manifest_path = output_dir / "manifest.json"
@@ -147,26 +274,34 @@ def build_snapshot(
         f"{snapshot_sha256}\n", encoding="ascii", newline="\n"
     )
 
-    readiness = _readiness(
-        bundle,
-        quality,
-        target_document_count=target_document_count,
-        review_date=review_date,
-        official_source_review=official_source_review,
-    )
-    (output_dir / "g1_readiness.json").write_text(
-        json.dumps(asdict(readiness), ensure_ascii=False, indent=2, sort_keys=True) + "\n",
-        encoding="utf-8",
-        newline="\n",
-    )
     return SnapshotBuild(manifest, snapshot_sha256, readiness)
 
 
-def validate_snapshot(snapshot_dir: Path) -> SnapshotValidation:
+def validate_snapshot(
+    snapshot_dir: Path,
+    *,
+    expected_sha256: str | None = None,
+) -> SnapshotValidation:
+    """Validate integrity, optionally pinning the manifest to a trusted external digest."""
+    try:
+        if expected_sha256 is not None:
+            if re.fullmatch(r"[0-9a-f]{64}", expected_sha256) is None:
+                raise SnapshotError("expected_sha256 must be 64 lowercase hexadecimal characters")
+            manifest_hash = sha256_file(_snapshot_path(snapshot_dir, "manifest.json"))
+            if manifest_hash != expected_sha256:
+                raise SnapshotError("snapshot does not match the expected SHA-256")
+        return _validate_snapshot(snapshot_dir)
+    except (OSError, ValueError) as exc:
+        if isinstance(exc, SnapshotError):
+            raise
+        raise SnapshotError(f"snapshot validation failed: {exc}") from exc
+
+
+def _validate_snapshot(snapshot_dir: Path) -> SnapshotValidation:
     """Validate manifest schema, ordering, counts, file hashes, and snapshot hash."""
     try:
         manifest = CorpusManifest.model_validate_json(
-            (snapshot_dir / "manifest.json").read_text(encoding="utf-8")
+            _snapshot_path(snapshot_dir, "manifest.json").read_text(encoding="utf-8")
         )
     except (OSError, ValueError) as exc:
         raise SnapshotError("manifest is missing or invalid") from exc
@@ -174,16 +309,89 @@ def validate_snapshot(snapshot_dir: Path) -> SnapshotValidation:
     if paths != sorted(paths):
         raise SnapshotError("manifest entries are not sorted")
     for entry in manifest.entries:
-        path = snapshot_dir.joinpath(*Path(entry.relative_path).parts)
+        path = _snapshot_path(snapshot_dir, entry.relative_path)
         if not path.is_file():
             raise SnapshotError(f"manifest file is missing: {entry.relative_path}")
         if sha256_file(path) != entry.sha256:
             raise SnapshotError(f"checksum mismatch: {entry.relative_path}")
-        count = _record_count(path) if path.suffix == ".jsonl" else 1
+        count = _record_count(path) if entry.relative_path.startswith("records/") else 1
         if count != entry.record_count:
             raise SnapshotError(f"record count mismatch: {entry.relative_path}")
 
-    expected_files = set(paths).union({"manifest.json", "snapshot.sha256", "g1_readiness.json"})
+    _validate_record_files(snapshot_dir, manifest)
+    evidence_path = _snapshot_path(snapshot_dir, "records/source_evidence.jsonl")
+    if manifest.source_evidence_sha256 is None:
+        raise SnapshotError("snapshot lacks source evidence integrity metadata; rebuild it")
+    if not evidence_path.is_file() or sha256_file(evidence_path) != manifest.source_evidence_sha256:
+        raise SnapshotError("source evidence checksum mismatch")
+    try:
+        bundle = read_bundle(snapshot_dir / "records")
+    except (OSError, ValueError) as exc:
+        raise SnapshotError("snapshot corpus records are invalid") from exc
+    quality = evaluate_bundle(bundle)
+    if not quality.passed:
+        raise SnapshotError(f"snapshot corpus quality failed: {quality.error_count} errors")
+    artifacts = {artifact.storage_path: artifact for artifact in bundle.source_artifacts}
+    expected_record_paths = {f"records/{filename}" for _, filename, _, _ in _RECORDS}
+    for entry in manifest.entries:
+        if entry.relative_path in expected_record_paths:
+            continue
+        artifact = artifacts.get(entry.relative_path)
+        if (
+            artifact is None
+            or entry.record_type != RecordType.SOURCE_ARTIFACT
+            or entry.sha256 != artifact.sha256
+            or _snapshot_path(snapshot_dir, entry.relative_path).stat().st_size
+            != artifact.byte_length
+        ):
+            raise SnapshotError(f"source artifact inventory mismatch: {entry.relative_path}")
+    if not set(artifacts).issubset(paths):
+        raise SnapshotError("source artifact files are missing from the manifest")
+
+    review = None
+    if manifest.source_review_sha256 is not None:
+        review_path = _snapshot_path(snapshot_dir, "source_review.json")
+        if not review_path.is_file() or sha256_file(review_path) != manifest.source_review_sha256:
+            raise SnapshotError("source review checksum mismatch")
+        try:
+            review = read_source_review(review_path)
+        except (OSError, ValueError) as exc:
+            raise SnapshotError("source review record is invalid") from exc
+    readiness_path = _snapshot_path(snapshot_dir, "g1_readiness.json")
+    if (
+        manifest.readiness_sha256 is None
+        or not readiness_path.is_file()
+        or sha256_file(readiness_path) != manifest.readiness_sha256
+    ):
+        raise SnapshotError("readiness checksum missing or mismatched; rebuild legacy snapshots")
+    try:
+        reported = json.loads(readiness_path.read_text(encoding="utf-8"))
+        target = reported["target_document_count"]
+        if type(target) is not int or target < 1:
+            raise ValueError("target_document_count must be a positive integer")
+    except (OSError, ValueError, KeyError, TypeError) as exc:
+        raise SnapshotError("readiness report is invalid") from exc
+    readiness = _readiness(
+        bundle,
+        quality,
+        target_document_count=target,
+        review_date=manifest.review_date,
+        official_source_review=review,
+    )
+    expected_report = json.loads(json.dumps(asdict(readiness)))
+    if json.dumps(reported, sort_keys=True) != json.dumps(expected_report, sort_keys=True):
+        raise SnapshotError("readiness report disagrees with corpus and source review")
+
+    expected_files = set(paths).union(
+        {
+            "manifest.json",
+            "snapshot.sha256",
+            "g1_readiness.json",
+            "records/source_evidence.jsonl",
+        }
+    )
+    if manifest.source_review_sha256 is not None:
+        expected_files.add("source_review.json")
     actual_files = {
         path.relative_to(snapshot_dir).as_posix()
         for path in snapshot_dir.rglob("*")
@@ -192,10 +400,12 @@ def validate_snapshot(snapshot_dir: Path) -> SnapshotValidation:
     if actual_files != expected_files:
         raise SnapshotError("snapshot contains missing or unlisted files")
     snapshot_sha256 = sha256_file(snapshot_dir / "manifest.json")
-    recorded_hash = (snapshot_dir / "snapshot.sha256").read_text(encoding="ascii").strip()
+    recorded_hash = (
+        _snapshot_path(snapshot_dir, "snapshot.sha256").read_text(encoding="ascii").strip()
+    )
     if recorded_hash != snapshot_sha256:
         raise SnapshotError("snapshot hash does not match the manifest")
-    return SnapshotValidation(manifest, snapshot_sha256)
+    return SnapshotValidation(manifest, snapshot_sha256, readiness)
 
 
 def _write_jsonl(records: tuple[object, ...], path: Path, identifier_field: str) -> None:
@@ -212,7 +422,7 @@ def _write_jsonl(records: tuple[object, ...], path: Path, identifier_field: str)
     path.write_text("\n".join(lines) + ("\n" if lines else ""), encoding="utf-8", newline="\n")
 
 
-def _model_json_bytes(model: CorpusManifest) -> bytes:
+def _model_json_bytes(model: BaseModel) -> bytes:
     serialized = json.dumps(
         model.model_dump(mode="json"),
         ensure_ascii=False,

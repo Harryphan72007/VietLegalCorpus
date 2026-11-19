@@ -24,6 +24,7 @@ from vietlegalcorpus.schemas import (
     LegalStatus,
     Provision,
     ProvisionVersion,
+    RecordType,
     RelationEdge,
     SourceArtifact,
 )
@@ -161,6 +162,9 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
         (item.provision_version_id for item in bundle.provision_versions),
     )
     _check_duplicates(issues, "relation", (item.relation_id for item in bundle.relation_edges))
+    _check_duplicates(
+        issues, "source_evidence", (item.source_artifact_id for item in bundle.source_evidence)
+    )
 
     artifacts = {item.artifact_id: item for item in bundle.source_artifacts}
     documents = {item.document_id: item for item in bundle.documents}
@@ -168,6 +172,15 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
     provisions = {item.provision_id: item for item in bundle.provisions}
     provision_versions = {item.provision_version_id: item for item in bundle.provision_versions}
     evidence = {item.source_artifact_id: item.text for item in bundle.source_evidence}
+
+    for item in bundle.source_evidence:
+        if item.source_artifact_id not in artifacts:
+            _error(
+                issues,
+                "orphan_source_evidence",
+                item.source_artifact_id,
+                "decoded evidence references an unknown artifact",
+            )
 
     for source_artifact in bundle.source_artifacts:
         if source_artifact.artifact_id != artifact_identifier(source_artifact.sha256):
@@ -205,6 +218,21 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
             )
 
     for document_version in bundle.document_versions:
+        decoded = evidence.get(document_version.source_artifact_id)
+        if decoded is None:
+            _error(
+                issues,
+                "missing_document_evidence",
+                document_version.document_version_id,
+                "document version has no decoded source evidence",
+            )
+        elif sha256_text(decoded) != document_version.text_sha256:
+            _error(
+                issues,
+                "document_text_checksum_mismatch",
+                document_version.document_version_id,
+                "document text checksum disagrees with decoded source evidence",
+            )
         referenced_artifact = artifacts.get(document_version.source_artifact_id)
         if document_version.document_id not in documents:
             _error(
@@ -286,6 +314,23 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
                 )
 
     for provision_version in bundle.provision_versions:
+        logical = provisions.get(provision_version.provision_id)
+        version = document_versions.get(provision_version.document_version_id)
+        if logical is not None and version is not None:
+            if logical.document_id != version.document_id:
+                _error(
+                    issues,
+                    "provision_document_mismatch",
+                    provision_version.provision_version_id,
+                    "provision and version belong to different documents",
+                )
+            if provision_version.source_anchor.source_artifact_id != version.source_artifact_id:
+                _error(
+                    issues,
+                    "anchor_artifact_mismatch",
+                    provision_version.provision_version_id,
+                    "anchor does not reference the document version source",
+                )
         if provision_version.provision_id not in provisions:
             _error(
                 issues,
@@ -336,14 +381,19 @@ def evaluate_bundle(bundle: CorpusBundle) -> QualityReport:
                 "anchor exceeds evidence",
             )
 
-    known_refs = set(document_versions).union(provision_versions)
+    known_refs = {
+        RecordType.DOCUMENT_VERSION: set(document_versions),
+        RecordType.PROVISION_VERSION: set(provision_versions),
+    }
     for edge in bundle.relation_edges:
-        if edge.source.record_id not in known_refs or edge.target.record_id not in known_refs:
+        if any(
+            ref.record_id not in known_refs[ref.record_type] for ref in (edge.source, edge.target)
+        ):
             _error(
                 issues,
                 "missing_relation_endpoint",
                 edge.relation_id,
-                "relation endpoint is missing",
+                "relation endpoint is missing from its declared record family",
             )
         if any(item not in provision_versions for item in edge.evidence_provision_version_ids):
             _error(

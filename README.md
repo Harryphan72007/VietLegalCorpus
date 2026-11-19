@@ -2,7 +2,9 @@
 
 Ingestion, parsing, and structuring of Vietnamese legal documents into clause-level JSONL.
 
-> Status: **scaffold (v0.1.0)** — walking skeleton only. Feature PRs land per the implementation plan.
+> Status: **development (v0.1.0)** — local ingestion, text/HTML/DOCX/PDF parsing,
+> provision hierarchy, temporal eligibility, quality evaluation, and reproducible snapshots.
+> The committed corpus is synthetic; official-source G1 approval remains pending.
 
 ## Quickstart
 
@@ -14,7 +16,11 @@ pip install -e ".[dev]"
 vlc version      # -> 0.1.0
 vlc doctor       # environment + writable data dirs
 vlc export-schemas --output-dir schemas/v1
+vlc evaluate data/samples/golden-corpus
 ```
+
+See [Snapshot workflow](docs/snapshots.md) for building, validating, and checking
+G1 readiness before passing a snapshot to downstream retrieval.
 
 ## Tasks
 

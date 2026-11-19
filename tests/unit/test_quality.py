@@ -3,14 +3,61 @@ from __future__ import annotations
 from dataclasses import replace
 from pathlib import Path
 
+import pytest
 from typer.testing import CliRunner
 
 from vietlegalcorpus.cli import app
-from vietlegalcorpus.quality import evaluate_bundle, read_bundle, write_bundle
-from vietlegalcorpus.schemas import SourceAnchor
+from vietlegalcorpus.quality import SourceEvidence, evaluate_bundle, read_bundle, write_bundle
+from vietlegalcorpus.schemas import RecordRef, RecordType, RelationEdge, RelationType, SourceAnchor
 
 GOLDEN = Path(__file__).parents[2] / "data" / "samples" / "golden-corpus"
 runner = CliRunner()
+
+
+@pytest.mark.parametrize("endpoint", ["source", "target"])
+def test_relation_endpoints_must_match_their_declared_family(endpoint: str) -> None:
+    bundle = read_bundle(GOLDEN)
+    edge = RelationEdge(
+        relation_id="relation:test:reference",
+        relation_type=RelationType.REFERENCES,
+        source=RecordRef(
+            record_type=RecordType.DOCUMENT_VERSION,
+            record_id=bundle.document_versions[0].document_version_id,
+        ),
+        target=RecordRef(
+            record_type=RecordType.PROVISION_VERSION,
+            record_id=bundle.provision_versions[0].provision_version_id,
+        ),
+    )
+    assert evaluate_bundle(replace(bundle, relation_edges=(edge,))).passed
+    original = getattr(edge, endpoint)
+    wrong_type = (
+        RecordType.PROVISION_VERSION if endpoint == "source" else RecordType.DOCUMENT_VERSION
+    )
+    broken = edge.model_copy(
+        update={endpoint: original.model_copy(update={"record_type": wrong_type})}
+    )
+    report = evaluate_bundle(replace(bundle, relation_edges=(broken,)))
+    assert "missing_relation_endpoint" in {issue.code for issue in report.issues}
+
+
+def test_document_evidence_must_exist_and_match_declared_text_hash() -> None:
+    bundle = read_bundle(GOLDEN)
+    first = bundle.source_evidence[0]
+    changed = first.model_copy(update={"text": first.text + " altered"})
+    report = evaluate_bundle(
+        replace(bundle, source_evidence=(changed, *bundle.source_evidence[1:]))
+    )
+    assert "document_text_checksum_mismatch" in {issue.code for issue in report.issues}
+    report = evaluate_bundle(replace(bundle, source_evidence=bundle.source_evidence[1:]))
+    assert "missing_document_evidence" in {issue.code for issue in report.issues}
+
+
+def test_unknown_artifact_evidence_is_rejected() -> None:
+    bundle = read_bundle(GOLDEN)
+    orphan = SourceEvidence(source_artifact_id="artifact:missing", text="untracked")
+    report = evaluate_bundle(replace(bundle, source_evidence=(*bundle.source_evidence, orphan)))
+    assert "orphan_source_evidence" in {issue.code for issue in report.issues}
 
 
 def test_golden_bundle_round_trips_byte_for_byte_and_passes(tmp_path: Path) -> None:
@@ -87,3 +134,27 @@ def test_evaluate_cli_emits_deterministic_json() -> None:
     assert first.exit_code == 0
     assert first.stdout == second.stdout
     assert '"passed": true' in first.stdout
+
+
+def test_cross_document_provision_and_duplicate_evidence_are_rejected() -> None:
+    bundle = read_bundle(GOLDEN)
+    original = bundle.provision_versions[0]
+    other = next(
+        version
+        for version in bundle.document_versions
+        if version.document_version_id != original.document_version_id
+    )
+    broken = original.model_copy(update={"document_version_id": other.document_version_id})
+    report = evaluate_bundle(
+        replace(
+            bundle,
+            provision_versions=(broken, *bundle.provision_versions[1:]),
+            source_evidence=(*bundle.source_evidence, bundle.source_evidence[0]),
+        )
+    )
+    codes = {issue.code for issue in report.issues}
+    assert {
+        "provision_document_mismatch",
+        "anchor_artifact_mismatch",
+        "duplicate_source_evidence_id",
+    } <= codes
