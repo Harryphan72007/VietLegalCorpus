@@ -11,6 +11,7 @@ from typing import Annotated
 import typer
 
 from vietlegalcorpus import __version__
+from vietlegalcorpus.batch import run_batch
 from vietlegalcorpus.config import load_settings
 from vietlegalcorpus.logging import configure_logging
 from vietlegalcorpus.quality import evaluate_bundle, read_bundle
@@ -20,6 +21,19 @@ from vietlegalcorpus.snapshot import validate_snapshot as validate_corpus_snapsh
 from vietlegalcorpus.source_review import read_source_review
 
 app = typer.Typer(add_completion=False, help="VietLegalCorpus CLI.")
+
+
+@app.command("batch-build")
+def batch_build_command(plan: Path, snapshot_dir: Path, report: Path) -> None:
+    """Ingest listed sources and report failures, parsing review, and G1 status."""
+    try:
+        result = run_batch(plan, snapshot_dir, report)
+    except (OSError, ValueError) as exc:
+        typer.echo(f"Error: {exc}", err=True)
+        raise typer.Exit(code=1) from exc
+    typer.echo(json.dumps(result, ensure_ascii=True, indent=2, sort_keys=True))
+    if result["status"] != "built":
+        raise typer.Exit(code=1)
 
 
 @app.command()
